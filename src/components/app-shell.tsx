@@ -1,0 +1,130 @@
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  LayoutDashboard,
+  Users,
+  PlusCircle,
+  TrendingUp,
+  ScrollText,
+  UserCog,
+  LogOut,
+} from "lucide-react";
+import type { ReactNode } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { myRoleQuery } from "@/lib/db";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+
+const NAV = [
+  { to: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
+  { to: "/merchants", label: "التجار", icon: Users },
+  { to: "/new", label: "حركة", icon: PlusCircle },
+  { to: "/prices", label: "السعر", icon: TrendingUp },
+  { to: "/audit", label: "السجل", icon: ScrollText },
+] as const;
+
+export function AppShell({ children, title }: { children: ReactNode; title?: string }) {
+  const { data: me } = useQuery(myRoleQuery);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  async function signOut() {
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    await supabase.auth.signOut();
+    navigate({ to: "/auth", replace: true });
+  }
+
+  return (
+    <div className="min-h-screen bg-background pb-20 md:pb-0">
+      <header className="sticky top-0 z-30 border-b border-border/70 bg-card/95 backdrop-blur">
+        <div className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link to="/dashboard" className="flex shrink-0 items-center gap-2">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-base font-extrabold text-primary-foreground">
+                ص
+              </span>
+              <span className="hidden text-base font-extrabold sm:block">دفتر الصاغة</span>
+            </Link>
+            {title ? (
+              <>
+                <span className="hidden text-muted-foreground sm:block">/</span>
+                <h1 className="truncate text-base font-bold sm:text-lg">{title}</h1>
+              </>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <nav className="hidden items-center gap-1 md:flex">
+              {NAV.map((n) => (
+                <NavItem key={n.to} {...n} active={pathname.startsWith(n.to)} />
+              ))}
+              {me?.isAdmin ? (
+                <NavItem
+                  to="/users"
+                  label="المستخدمين"
+                  icon={UserCog}
+                  active={pathname.startsWith("/users")}
+                />
+              ) : null}
+            </nav>
+            <Button variant="ghost" size="icon" onClick={signOut} aria-label="خروج">
+              <LogOut className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-4 py-5">{children}</main>
+
+      {/* شريط تنقل سفلي للموبايل */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/98 backdrop-blur md:hidden">
+        <div className="mx-auto grid max-w-lg grid-cols-5">
+          {NAV.map(({ to, label, icon: Icon }) => {
+            const active = pathname.startsWith(to);
+            return (
+              <Link
+                key={to}
+                to={to}
+                className={cn(
+                  "flex flex-col items-center gap-1 py-2.5 text-[11px] font-semibold transition-colors",
+                  active ? "text-primary" : "text-muted-foreground",
+                )}
+              >
+                <Icon className={cn("h-5 w-5", active && "stroke-[2.5]")} />
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+function NavItem({
+  to,
+  label,
+  icon: Icon,
+  active,
+}: {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  active: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      className={cn(
+        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors",
+        active
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </Link>
+  );
+}
