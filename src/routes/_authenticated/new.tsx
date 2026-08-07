@@ -407,7 +407,7 @@ function LineCard({
   categories: ItemCategory[];
   result: ReturnType<typeof computeLine>;
   onChange: (patch: Partial<DraftLine>) => void;
-  onRemove?: () => void;
+  onRemove?: (() => void) | undefined;
 }) {
   const cat = categories.find((c) => c.id === line.categoryId) ?? null;
   const isGoods = kind === "inbound" || kind === "purchase" || kind === "sale";
