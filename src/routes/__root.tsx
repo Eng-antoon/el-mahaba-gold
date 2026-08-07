@@ -79,19 +79,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "دفتر الصاغة — حسابات الذهب والتجار" },
+      { title: "دفتر الصاغة — نظام حسابات محل الذهب" },
       {
         name: "description",
         content:
-          "نظام عربي لإدارة حسابات محل الذهب: الوارد والمنصرف، وأرصدة كل تاجر بالذهب والفلوس.",
+          "سجّل الوارد والمنصرف من الذهب والفلوس، واعرف على طول كل تاجر ليه كام وعليه كام بالجرام وبالجنيه.",
       },
-      { property: "og:title", content: "دفتر الصاغة — حسابات الذهب والتجار" },
+      { property: "og:title", content: "دفتر الصاغة — نظام حسابات محل الذهب" },
       {
         property: "og:description",
-        content: "سجّل الوارد والتسديد واعرف على طول ليك كام وعليك كام دهب وفلوس.",
+        content: "سجّل الوارد والمنصرف من الذهب والفلوس، واعرف على طول كل تاجر ليه كام وعليه كام بالجرام وبالجنيه.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "دفتر الصاغة — نظام حسابات محل الذهب" },
+      { name: "twitter:description", content: "سجّل الوارد والمنصرف من الذهب والفلوس، واعرف على طول كل تاجر ليه كام وعليه كام بالجرام وبالجنيه." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8ddd37756785fc1ca24535f19310fab5/id-preview-49018ae2--f458d7ef-121b-4f37-986a-46584da06911.lovable.app-1786129008195.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8ddd37756785fc1ca24535f19310fab5/id-preview-49018ae2--f458d7ef-121b-4f37-986a-46584da06911.lovable.app-1786129008195.png" },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -101,7 +105,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap",
       },
       { rel: "stylesheet", href: appCss },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),
   shellComponent: RootShell,
