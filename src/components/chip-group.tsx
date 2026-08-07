@@ -12,7 +12,7 @@ export function ChipGroup<T extends string | number>({
 }: {
   label?: string;
   value: T | null | undefined;
-  options: { value: T; label: string; hint?: string }[];
+  options: { value: T; label: string; hint?: string | undefined }[];
   onChange: (v: T) => void;
   className?: string;
   columns?: number;
