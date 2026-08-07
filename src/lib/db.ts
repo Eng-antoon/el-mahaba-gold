@@ -59,7 +59,9 @@ export function merchantQuery(id: string) {
   return queryOptions({
     queryKey: ["merchant", id],
     queryFn: async () =>
-      unwrap(await supabase.from("merchants").select("*").eq("id", id).single()),
+      unwrap(
+        await supabase.from("merchants").select("*").eq("id", id).single(),
+      ) as unknown as Merchant,
   });
 }
 
