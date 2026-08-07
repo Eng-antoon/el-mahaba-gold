@@ -1,21 +1,21 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { PlusCircle, Search, TrendingUp } from "lucide-react";
+import { PlusCircle, Search, BookOpenText } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { BalanceValue } from "@/components/balance-value";
-import { balancesQuery, latestPriceQuery } from "@/lib/db";
+import { balancesQuery } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { fmtDate, fmtMoney, fmtNum } from "@/lib/gold-math";
+import { fmtDate, fmtNum } from "@/lib/gold-math";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "الرئيسية — دفتر الصاغة" },
+      { title: "الرئيسية — المحبة للذهب" },
       { name: "description", content: "إجمالي الذهب والنقدية اللي ليك واللي عليك من كل التجار." },
-      { property: "og:title", content: "الرئيسية — دفتر الصاغة" },
+      { property: "og:title", content: "الرئيسية — المحبة للذهب" },
       { property: "og:description", content: "إجمالي الذهب والنقدية مع كل التجار في شاشة واحدة." },
     ],
   }),
@@ -24,7 +24,6 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function Dashboard() {
   const { data: balances = [], isLoading } = useQuery(balancesQuery);
-  const { data: price } = useQuery(latestPriceQuery);
   const [q, setQ] = useState("");
 
   const totals = useMemo(() => {
@@ -46,9 +45,7 @@ function Dashboard() {
   const filtered = useMemo(() => {
     const term = q.trim();
     const list = term ? balances.filter((b) => b.name.includes(term)) : balances;
-    return [...list].sort(
-      (a, b) => Math.abs(Number(b.gold_21)) - Math.abs(Number(a.gold_21)),
-    );
+    return [...list].sort((a, b) => Math.abs(Number(b.gold_21)) - Math.abs(Number(a.gold_21)));
   }, [balances, q]);
 
   return (
@@ -60,35 +57,30 @@ function Dashboard() {
           owed={totals.goldOwed}
           credit={totals.goldCredit}
         />
-        <SummaryCard title="النقدية" unit="جنيه" owed={totals.cashOwed} credit={totals.cashCredit} />
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card p-4">
-        <TrendingUp className="h-5 w-5 shrink-0 text-primary" />
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold text-muted-foreground">سعر جرام عيار 21</p>
-          <p className="tnum text-lg font-extrabold">
-            {price ? fmtMoney(Number(price.price_per_gram_21)) : "مش مسجّل"}
-            {price ? (
-              <span className="ms-2 text-xs font-semibold text-muted-foreground">
-                {fmtDate(price.price_date)}
-              </span>
-            ) : null}
-          </p>
-        </div>
-        <Button asChild variant="outline" size="sm" className="font-bold">
-          <Link to="/prices">تحديث السعر</Link>
-        </Button>
+        <SummaryCard
+          title="النقدية"
+          unit="جنيه"
+          owed={totals.cashOwed}
+          credit={totals.cashCredit}
+        />
       </div>
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-extrabold">أرصدة التجار</h2>
-        <Button asChild className="gap-2 font-bold">
-          <Link to="/new">
-            <PlusCircle className="h-4 w-4" />
-            حركة جديدة
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline" className="gap-2 font-bold">
+            <Link to="/statements">
+              <BookOpenText className="h-4 w-4" />
+              كشف حساب
+            </Link>
+          </Button>
+          <Button asChild className="gap-2 font-bold">
+            <Link to="/new">
+              <PlusCircle className="h-4 w-4" />
+              حركة جديدة
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="relative mt-3">

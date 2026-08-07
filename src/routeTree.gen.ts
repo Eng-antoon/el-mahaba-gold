@@ -12,11 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedAuditRouteImport } from './routes/_authenticated/audit'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedNewRouteImport } from './routes/_authenticated/new'
-import { Route as AuthenticatedPricesRouteImport } from './routes/_authenticated/prices'
+import { Route as AuthenticatedStatementsRouteImport } from './routes/_authenticated/statements'
 import { Route as AuthenticatedMerchantsIndexRouteImport } from './routes/_authenticated/merchants/index'
 import { Route as AuthenticatedMerchantsIdRouteImport } from './routes/_authenticated/merchants/$id'
+import { Route as AuthenticatedTransactionsIdEditRouteImport } from './routes/_authenticated/transactions/$id/edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -32,6 +34,11 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedAuditRoute = AuthenticatedAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -42,9 +49,9 @@ const AuthenticatedNewRoute = AuthenticatedNewRouteImport.update({
   path: '/new',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedPricesRoute = AuthenticatedPricesRouteImport.update({
-  id: '/prices',
-  path: '/prices',
+const AuthenticatedStatementsRoute = AuthenticatedStatementsRouteImport.update({
+  id: '/statements',
+  path: '/statements',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedMerchantsIndexRoute =
@@ -59,65 +66,83 @@ const AuthenticatedMerchantsIdRoute =
     path: '/merchants/$id',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedTransactionsIdEditRoute =
+  AuthenticatedTransactionsIdEditRouteImport.update({
+    id: '/transactions/$id/edit',
+    path: '/transactions/$id/edit',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/audit': typeof AuthenticatedAuditRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/new': typeof AuthenticatedNewRoute
-  '/prices': typeof AuthenticatedPricesRoute
+  '/statements': typeof AuthenticatedStatementsRoute
   '/merchants/$id': typeof AuthenticatedMerchantsIdRoute
   '/merchants/': typeof AuthenticatedMerchantsIndexRoute
+  '/transactions/$id/edit': typeof AuthenticatedTransactionsIdEditRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/audit': typeof AuthenticatedAuditRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/new': typeof AuthenticatedNewRoute
-  '/prices': typeof AuthenticatedPricesRoute
+  '/statements': typeof AuthenticatedStatementsRoute
   '/merchants/$id': typeof AuthenticatedMerchantsIdRoute
   '/merchants': typeof AuthenticatedMerchantsIndexRoute
+  '/transactions/$id/edit': typeof AuthenticatedTransactionsIdEditRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_authenticated/audit': typeof AuthenticatedAuditRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/new': typeof AuthenticatedNewRoute
-  '/_authenticated/prices': typeof AuthenticatedPricesRoute
+  '/_authenticated/statements': typeof AuthenticatedStatementsRoute
   '/_authenticated/merchants/$id': typeof AuthenticatedMerchantsIdRoute
   '/_authenticated/merchants/': typeof AuthenticatedMerchantsIndexRoute
+  '/_authenticated/transactions/$id/edit': typeof AuthenticatedTransactionsIdEditRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/auth'
+    | '/audit'
     | '/dashboard'
     | '/new'
-    | '/prices'
+    | '/statements'
     | '/merchants/$id'
     | '/merchants/'
+    | '/transactions/$id/edit'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
+    | '/audit'
     | '/dashboard'
     | '/new'
-    | '/prices'
+    | '/statements'
     | '/merchants/$id'
     | '/merchants'
+    | '/transactions/$id/edit'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/_authenticated/audit'
     | '/_authenticated/dashboard'
     | '/_authenticated/new'
-    | '/_authenticated/prices'
+    | '/_authenticated/statements'
     | '/_authenticated/merchants/$id'
     | '/_authenticated/merchants/'
+    | '/_authenticated/transactions/$id/edit'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -149,6 +174,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/audit': {
+      id: '/_authenticated/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AuthenticatedAuditRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -163,11 +195,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedNewRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/prices': {
-      id: '/_authenticated/prices'
-      path: '/prices'
-      fullPath: '/prices'
-      preLoaderRoute: typeof AuthenticatedPricesRouteImport
+    '/_authenticated/statements': {
+      id: '/_authenticated/statements'
+      path: '/statements'
+      fullPath: '/statements'
+      preLoaderRoute: typeof AuthenticatedStatementsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/merchants/': {
@@ -184,23 +216,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMerchantsIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/transactions/$id/edit': {
+      id: '/_authenticated/transactions/$id/edit'
+      path: '/transactions/$id/edit'
+      fullPath: '/transactions/$id/edit'
+      preLoaderRoute: typeof AuthenticatedTransactionsIdEditRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAuditRoute: typeof AuthenticatedAuditRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedNewRoute: typeof AuthenticatedNewRoute
-  AuthenticatedPricesRoute: typeof AuthenticatedPricesRoute
+  AuthenticatedStatementsRoute: typeof AuthenticatedStatementsRoute
   AuthenticatedMerchantsIdRoute: typeof AuthenticatedMerchantsIdRoute
   AuthenticatedMerchantsIndexRoute: typeof AuthenticatedMerchantsIndexRoute
+  AuthenticatedTransactionsIdEditRoute: typeof AuthenticatedTransactionsIdEditRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAuditRoute: AuthenticatedAuditRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedNewRoute: AuthenticatedNewRoute,
-  AuthenticatedPricesRoute: AuthenticatedPricesRoute,
+  AuthenticatedStatementsRoute: AuthenticatedStatementsRoute,
   AuthenticatedMerchantsIdRoute: AuthenticatedMerchantsIdRoute,
   AuthenticatedMerchantsIndexRoute: AuthenticatedMerchantsIndexRoute,
+  AuthenticatedTransactionsIdEditRoute: AuthenticatedTransactionsIdEditRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -214,3 +257,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

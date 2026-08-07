@@ -27,9 +27,9 @@ import type { MerchantType } from "@/lib/gold-math";
 export const Route = createFileRoute("/_authenticated/merchants/")({
   head: () => ({
     meta: [
-      { title: "التجار — دفتر الصاغة" },
+      { title: "التجار — المحبة للذهب" },
       { name: "description", content: "كل التجار وأرصدتهم بالذهب والفلوس، وإضافة تاجر جديد." },
-      { property: "og:title", content: "التجار — دفتر الصاغة" },
+      { property: "og:title", content: "التجار — المحبة للذهب" },
       { property: "og:description", content: "كل التجار وأرصدتهم بالذهب والفلوس." },
     ],
   }),

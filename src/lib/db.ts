@@ -4,7 +4,6 @@ import { queryOptions } from "@tanstack/react-query";
 
 export type Merchant = Database["public"]["Tables"]["merchants"]["Row"];
 export type ItemCategory = Database["public"]["Tables"]["item_categories"]["Row"];
-export type GoldPrice = Database["public"]["Tables"]["gold_prices"]["Row"];
 export type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 export type TxnLine = Database["public"]["Tables"]["transaction_lines"]["Row"];
 export type AuditRow = Database["public"]["Tables"]["audit_log"]["Row"];
@@ -43,18 +42,6 @@ export const categoriesQuery = queryOptions({
     ),
 });
 
-export const pricesQuery = queryOptions({
-  queryKey: ["gold_prices"],
-  queryFn: async () =>
-    unwrap(
-      await supabase
-        .from("gold_prices")
-        .select("*")
-        .order("price_date", { ascending: false })
-        .limit(60),
-    ),
-});
-
 export function merchantQuery(id: string) {
   return queryOptions({
     queryKey: ["merchant", id],
@@ -72,11 +59,42 @@ export function merchantTxnsQuery(id: string) {
       unwrap(
         await supabase
           .from("transactions")
-          .select("*, transaction_lines(*), merchants!transactions_merchant_id_fkey(name)")
-          .eq("merchant_id", id)
+          .select(
+            "*, transaction_lines(*), merchant:merchants!transactions_merchant_id_fkey(name), counterparty:merchants!transactions_counterparty_merchant_id_fkey(name)",
+          )
+          .or(`merchant_id.eq.${id},counterparty_merchant_id.eq.${id}`)
           .order("txn_date", { ascending: false })
           .order("created_at", { ascending: false }),
-      ) as unknown as (Transaction & { transaction_lines: TxnLine[] })[],
+      ) as unknown as (Transaction & {
+        transaction_lines: TxnLine[];
+        merchant: { name: string } | null;
+        counterparty: { name: string } | null;
+      })[],
+  });
+}
+
+export function transactionQuery(id: string) {
+  return queryOptions({
+    queryKey: ["transaction", id],
+    queryFn: async () =>
+      unwrap(
+        await supabase.from("transactions").select("*, transaction_lines(*)").eq("id", id).single(),
+      ) as unknown as Transaction & { transaction_lines: TxnLine[] },
+  });
+}
+
+export function statementQuery(merchantId: string | null, from?: string, to?: string) {
+  return queryOptions({
+    queryKey: ["statement", merchantId, from ?? "", to ?? ""],
+    enabled: Boolean(merchantId),
+    queryFn: async () =>
+      unwrap(
+        await supabase.rpc("merchant_statement", {
+          _merchant_id: merchantId!,
+          ...(from ? { _from: from } : {}),
+          ...(to ? { _to: to } : {}),
+        }),
+      ),
   });
 }
 
@@ -96,7 +114,7 @@ export const auditQuery = queryOptions({
         .from("audit_log")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(300),
+        .limit(500),
     ),
 });
 
@@ -127,19 +145,5 @@ export const myRoleQuery = queryOptions({
       isAdmin: roles.some((r) => r.role === "admin"),
       name: profile.data?.full_name || userData.user?.email || "",
     };
-  },
-});
-
-export const latestPriceQuery = queryOptions({
-  queryKey: ["latest_price"],
-  queryFn: async () => {
-    const res = await supabase
-      .from("gold_prices")
-      .select("*")
-      .order("price_date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (res.error) throw new Error(res.error.message);
-    return res.data;
   },
 });

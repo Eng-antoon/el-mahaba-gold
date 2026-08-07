@@ -14,13 +14,13 @@ export const PURITIES = [
 /** تحويل أي وزن بأي عيار إلى ما يعادله عيار 21 */
 export function toGold21(weight: number, purity: number): number {
   if (!Number.isFinite(weight) || !Number.isFinite(purity)) return 0;
-  return round3((weight * purity) / BASE_PURITY);
+  return round2((weight * purity) / BASE_PURITY);
 }
 
 /** تحويل وزن عيار 21 إلى ما يعادله في عيار آخر */
 export function fromGold21(weight21: number, purity: number): number {
   if (!purity) return 0;
-  return round3((weight21 * BASE_PURITY) / purity);
+  return round2((weight21 * BASE_PURITY) / purity);
 }
 
 export function round2(n: number): number {
@@ -174,8 +174,10 @@ export function computeLine(input: LineInput): LineResult {
   }
 
   if (input.kind === "transfer") {
-    // تحويل: ينزل من حسابي عند هذا التاجر (رصيدي يقل ⇒ موجب)
-    return { weight21: w21, cashAmount: round2(input.amount || 0), goldDelta: w21, cashDelta: round2(input.amount || 0) };
+    // التاجر الأول سدّد للتاجر الثاني بالنيابة عن المحل: الدين ينقص عند الاثنين.
+    const weight = round2(input.weight || 0);
+    const cash = round2(input.amount || 0);
+    return { weight21: weight, cashAmount: cash, goldDelta: -weight, cashDelta: -cash };
   }
 
   // تسديد
@@ -200,7 +202,7 @@ export function computeLine(input: LineInput): LineResult {
     case "wage_to_gold": {
       const amt = round2(input.amount || 0);
       const price = input.goldPrice || 0;
-      const gold = price > 0 ? round3(amt / price) : 0;
+      const gold = price > 0 ? round2(amt / price) : 0;
       return { weight21: gold, cashAmount: amt, goldDelta: gold, cashDelta: -amt };
     }
     default:

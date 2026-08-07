@@ -1,30 +1,21 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  LayoutDashboard,
-  Users,
-  PlusCircle,
-  TrendingUp,
-  ScrollText,
-  UserCog,
-  LogOut,
-} from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { LayoutDashboard, Users, PlusCircle, ScrollText, LogOut, BookOpenText } from "lucide-react";
 import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { myRoleQuery } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/brand-mark";
 
 const NAV = [
   { to: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
   { to: "/merchants", label: "التجار", icon: Users },
   { to: "/new", label: "حركة", icon: PlusCircle },
-  { to: "/prices", label: "السعر", icon: TrendingUp },
+  { to: "/statements", label: "كشف حساب", icon: BookOpenText },
   { to: "/audit", label: "السجل", icon: ScrollText },
 ] as const;
 
 export function AppShell({ children, title }: { children: ReactNode; title?: string }) {
-  const { data: me } = useQuery(myRoleQuery);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -42,10 +33,8 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
         <div className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <Link to="/dashboard" className="flex shrink-0 items-center gap-2">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-base font-extrabold text-primary-foreground">
-                ص
-              </span>
-              <span className="hidden text-base font-extrabold sm:block">دفتر الصاغة</span>
+              <BrandMark className="h-9 w-9 rounded-xl" />
+              <span className="hidden text-base font-extrabold sm:block">المحبة للذهب</span>
             </Link>
             {title ? (
               <>
@@ -59,14 +48,6 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
               {NAV.map((n) => (
                 <NavItem key={n.to} {...n} active={pathname.startsWith(n.to)} />
               ))}
-              {me?.isAdmin ? (
-                <NavItem
-                  to="/users"
-                  label="المستخدمين"
-                  icon={UserCog}
-                  active={pathname.startsWith("/users")}
-                />
-              ) : null}
             </nav>
             <Button variant="ghost" size="icon" onClick={signOut} aria-label="خروج">
               <LogOut className="h-5 w-5" />

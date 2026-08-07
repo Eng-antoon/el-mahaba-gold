@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,14 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import { BrandMark } from "@/components/brand-mark";
 import { z } from "zod";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "تسجيل الدخول — دفتر الصاغة" },
+      { title: "تسجيل الدخول — المحبة للذهب" },
       { name: "description", content: "ادخل على حسابك لمتابعة أرصدة الذهب والفلوس مع التجار." },
-      { property: "og:title", content: "تسجيل الدخول — دفتر الصاغة" },
+      { property: "og:title", content: "تسجيل الدخول — المحبة للذهب" },
       { property: "og:description", content: "ادخل على حسابك لمتابعة أرصدة الذهب والفلوس." },
     ],
   }),
@@ -26,7 +27,7 @@ const schema = z.object({
   fullName: z.string().trim().max(100).optional(),
 });
 
-function AuthPage() {
+export function AuthPage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
@@ -91,12 +92,10 @@ function AuthPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary text-2xl font-extrabold text-primary-foreground">
-            ص
-          </span>
-          <h1 className="mt-4 text-2xl font-extrabold">دفتر الصاغة</h1>
+          <BrandMark className="mx-auto h-14 w-14" />
+          <h1 className="mt-4 text-2xl font-extrabold">المحبة للذهب</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            حسابات الذهب والفلوس مع كل تاجر في مكان واحد
+            دفتر الصاغة · حسابات الدهب والفلوس مع كل تاجر
           </p>
         </div>
 
@@ -168,12 +167,6 @@ function AuthPage() {
             </Button>
           </form>
         </Card>
-
-        <p className="mt-5 text-center text-xs text-muted-foreground">
-          <Link to="/" className="font-semibold underline-offset-4 hover:underline">
-            رجوع للصفحة الرئيسية
-          </Link>
-        </p>
       </div>
     </div>
   );

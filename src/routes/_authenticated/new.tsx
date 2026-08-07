@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -16,8 +16,8 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   balancesQuery,
   categoriesQuery,
-  latestPriceQuery,
   merchantsQuery,
+  transactionQuery,
   type ItemCategory,
 } from "@/lib/db";
 import {
@@ -35,19 +35,30 @@ import {
   type PayMethod,
   type TxnKind,
 } from "@/lib/gold-math";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const searchSchema = z.object({
   merchant: z.string().optional(),
   kind: z.enum(["inbound", "settlement", "purchase", "sale", "transfer"]).optional(),
+  transaction: z.string().uuid().optional(),
 });
 
 export const Route = createFileRoute("/_authenticated/new")({
   validateSearch: searchSchema,
   head: () => ({
     meta: [
-      { title: "حركة جديدة — دفتر الصاغة" },
+      { title: "حركة — المحبة للذهب" },
       { name: "description", content: "سجّل وارد أو تسديد أو شراء وبيع دهب مع أي تاجر بسرعة." },
-      { property: "og:title", content: "حركة جديدة — دفتر الصاغة" },
+      { property: "og:title", content: "حركة — المحبة للذهب" },
       { property: "og:description", content: "سجّل وارد أو تسديد أو شراء وبيع دهب مع أي تاجر." },
     ],
   }),
@@ -85,7 +96,10 @@ function NewTxnPage() {
 
   const { data: merchants = [] } = useQuery(merchantsQuery);
   const { data: categories = [] } = useQuery(categoriesQuery);
-  const { data: latestPrice } = useQuery(latestPriceQuery);
+  const { data: existing } = useQuery({
+    ...transactionQuery(search.transaction ?? "00000000-0000-0000-0000-000000000000"),
+    enabled: Boolean(search.transaction),
+  });
 
   const [merchantId, setMerchantId] = useState<string | null>(search.merchant ?? null);
   const [kind, setKind] = useState<TxnKind>(search.kind ?? "inbound");
@@ -95,10 +109,36 @@ function NewTxnPage() {
   const [counterparty, setCounterparty] = useState<string | null>(null);
   const [lines, setLines] = useState<DraftLine[]>([newLine()]);
   const [karat, setKarat] = useState(875);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const hydrated = useRef(false);
 
   useEffect(() => {
-    if (latestPrice && goldPrice === 0) setGoldPrice(Number(latestPrice.price_per_gram_21));
-  }, [latestPrice, goldPrice]);
+    if (!existing || hydrated.current) return;
+    hydrated.current = true;
+    setMerchantId(existing.merchant_id);
+    setKind(existing.kind);
+    setDate(existing.txn_date);
+    setGoldPrice(Number(existing.gold_price_used ?? 0));
+    setNotes(existing.notes ?? "");
+    setCounterparty(existing.counterparty_merchant_id);
+    const loaded = [...existing.transaction_lines]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((l) => ({
+        key: l.id,
+        categoryId: l.category_id,
+        method: l.method,
+        purity: Number(l.purity),
+        weight: Number(l.weight),
+        pieces: Number(l.pieces ?? 0),
+        rate: Number(l.rate_per_gram),
+        amount:
+          l.method === "cash" || l.method === "wage_to_gold" || existing.kind === "transfer"
+            ? Number(l.cash_amount)
+            : 0,
+      }));
+    setLines(loaded.length ? loaded : [newLine()]);
+    setKarat(Number(loaded[0]?.purity ?? 875));
+  }, [existing]);
 
   const merchant = merchants.find((m) => m.id === merchantId) ?? null;
   const mType: MerchantType = (merchant?.merchant_type ?? "jewelry") as MerchantType;
@@ -114,6 +154,8 @@ function NewTxnPage() {
   );
 
   const isGoodsKind = kind === "inbound" || kind === "purchase" || kind === "sale";
+  const needsGoldPrice =
+    kind === "purchase" || kind === "sale" || lines.some((line) => line.method === "wage_to_gold");
 
   const results = lines.map((l) =>
     computeLine({
@@ -141,87 +183,41 @@ function NewTxnPage() {
       });
       if (valid.length === 0) throw new Error("مافيش بنود مكتوبة");
 
-      const { data: userData } = await supabase.auth.getUser();
-      const uid = userData.user?.id ?? null;
-
-      const { data: txn, error } = await supabase
-        .from("transactions")
-        .insert({
-          merchant_id: merchantId,
-          counterparty_merchant_id: kind === "transfer" ? counterparty : null,
-          kind,
-          txn_date: date,
-          gold_price_used: goldPrice || null,
-          notes: notes.trim() || null,
-          total_gold_21: totalGold,
-          total_cash: totalCash,
-          created_by: uid,
-        })
-        .select("id")
-        .single();
-      if (error) throw new Error(error.message);
-
-      const payload = lines.flatMap((l, i) => {
+      const payloadLines = lines.flatMap((l, i) => {
         const r = results[i]!;
         if (Math.abs(r.goldDelta) === 0 && Math.abs(r.cashDelta) === 0) return [];
         const cat = categories.find((c) => c.id === l.categoryId);
         return [
           {
-            transaction_id: txn.id,
             category_id: l.categoryId,
             label: cat?.name_ar ?? (l.method ? METHOD_LABELS[l.method] : ""),
             method: kind === "settlement" ? l.method : kind === "transfer" ? "transfer" : null,
             purity: l.purity,
             weight: l.weight,
             pieces: cat?.tracks_count && l.pieces ? l.pieces : null,
-            rate_per_gram: l.rate,
-            weight_21: r.weight21,
-            cash_amount: r.cashAmount,
-            gold_delta: r.goldDelta,
-            cash_delta: r.cashDelta,
-            sort_order: i,
+            rate: l.rate,
+            amount: l.amount,
           },
         ];
       });
-
-      const { error: lineErr } = await supabase.from("transaction_lines").insert(payload);
-      if (lineErr) throw new Error(lineErr.message);
-
-      // الطرف الآخر في التحويل: أثر معاكس
-      if (kind === "transfer" && counterparty) {
-        const { data: mirror, error: mErr } = await supabase
-          .from("transactions")
-          .insert({
-            merchant_id: counterparty,
-            counterparty_merchant_id: merchantId,
-            kind: "transfer",
-            txn_date: date,
-            gold_price_used: goldPrice || null,
-            notes: `تحويل من ${merchant?.name ?? ""}${notes.trim() ? " — " + notes.trim() : ""}`,
-            total_gold_21: -totalGold,
-            total_cash: -totalCash,
-            created_by: uid,
-          })
-          .select("id")
-          .single();
-        if (mErr) throw new Error(mErr.message);
-        const mirrorLines = payload.map((p) => ({
-          ...p,
-          transaction_id: mirror.id,
-          gold_delta: -p.gold_delta,
-          cash_delta: -p.cash_delta,
-        }));
-        const { error: mlErr } = await supabase.from("transaction_lines").insert(mirrorLines);
-        if (mlErr) throw new Error(mlErr.message);
-      }
-
-      return merchantId;
+      const { data, error } = await supabase.rpc("save_transaction", {
+        _transaction_id: search.transaction ?? null,
+        _payload: {
+          merchant_id: merchantId,
+          counterparty_merchant_id: kind === "transfer" ? counterparty : null,
+          kind,
+          txn_date: date,
+          gold_price_used: goldPrice || null,
+          notes: notes.trim() || null,
+          lines: payloadLines,
+        },
+      });
+      if (error) throw new Error(error.message);
+      return { merchantId, transactionId: data };
     },
-    onSuccess: (id) => {
-      toast.success("تم حفظ الحركة");
-      qc.invalidateQueries({ queryKey: ["balances"] });
-      qc.invalidateQueries({ queryKey: ["merchant_txns", id] });
-      qc.invalidateQueries({ queryKey: ["merchant_breakdown", id] });
+    onSuccess: ({ merchantId: id }) => {
+      toast.success(search.transaction ? "تم تعديل الحركة" : "تم حفظ الحركة");
+      qc.invalidateQueries();
       navigate({ to: "/merchants/$id", params: { id: id! } });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -232,7 +228,7 @@ function NewTxnPage() {
   }
 
   return (
-    <AppShell title="حركة جديدة">
+    <AppShell title={search.transaction ? "تعديل حركة" : "حركة جديدة"}>
       <div className="space-y-4 pb-32">
         <Card className="space-y-4 p-4">
           <ChipGroup
@@ -246,9 +242,7 @@ function NewTxnPage() {
             }))}
           />
           {merchants.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              أضف تاجر الأول من صفحة التجار.
-            </p>
+            <p className="text-sm text-muted-foreground">أضف تاجر الأول من صفحة التجار.</p>
           ) : null}
         </Card>
 
@@ -265,7 +259,7 @@ function NewTxnPage() {
                 options={allowedKinds.map((k) => ({ value: k, label: KIND_LABELS[k] }))}
               />
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className={needsGoldPrice ? "grid gap-3 sm:grid-cols-2" : "grid gap-3"}>
                 <div className="space-y-1.5">
                   <Label className="text-sm font-bold">التاريخ</Label>
                   <Input
@@ -276,12 +270,14 @@ function NewTxnPage() {
                     dir="ltr"
                   />
                 </div>
-                <NumField
-                  label="سعر جرام عيار 21 (جنيه)"
-                  value={goldPrice}
-                  onChange={setGoldPrice}
-                  step="1"
-                />
+                {needsGoldPrice ? (
+                  <NumField
+                    label="سعر جرام عيار 21 للحركة (جنيه)"
+                    value={goldPrice}
+                    onChange={setGoldPrice}
+                    step="1"
+                  />
+                ) : null}
               </div>
 
               {kind === "transfer" ? (
@@ -378,14 +374,46 @@ function NewTxnPage() {
             </div>
             <Button
               className="h-12 shrink-0 px-6 text-base font-bold"
-              onClick={() => save.mutate()}
+              onClick={() => (search.transaction ? setConfirmOpen(true) : save.mutate())}
               disabled={save.isPending}
             >
-              {save.isPending ? "..." : "حفظ"}
+              {save.isPending ? "..." : search.transaction ? "راجع التعديل" : "حفظ"}
             </Button>
           </div>
         </div>
       ) : null}
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-start">تأكيد تعديل الحركة</AlertDialogTitle>
+            <AlertDialogDescription className="text-start leading-7">
+              التعديل هيغيّر رصيد التاجر ولو كانت الحركة تحويل هيغيّر رصيد التاجرين. راجع الفرق قبل
+              التأكيد؛ النسخة القديمة والجديدة هيفضلوا محفوظين في سجل التعديلات.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid grid-cols-2 gap-3 rounded-xl bg-muted p-3 text-sm">
+            <div>
+              <p className="text-xs font-bold text-muted-foreground">قبل التعديل</p>
+              <p className="tnum mt-1 font-extrabold">
+                {fmtGrams(Number(existing?.total_gold_21 ?? 0))}
+              </p>
+              <p className="tnum font-extrabold">{fmtMoney(Number(existing?.total_cash ?? 0))}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-muted-foreground">بعد التعديل</p>
+              <p className="tnum mt-1 font-extrabold">{fmtGrams(totalGold)}</p>
+              <p className="tnum font-extrabold">{fmtMoney(totalCash)}</p>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>رجوع</AlertDialogCancel>
+            <AlertDialogAction onClick={() => save.mutate()} disabled={save.isPending}>
+              تأكيد التعديل
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }
@@ -452,7 +480,11 @@ function LineCard({
               onChange={(v) => onChange({ weight: v })}
             />
             <NumField
-              label={mType === "raw" && kind !== "inbound" ? "مصنعية للجرام (جنيه)" : "المصنعية للجرام (جنيه)"}
+              label={
+                mType === "raw" && kind !== "inbound"
+                  ? "مصنعية للجرام (جنيه)"
+                  : "المصنعية للجرام (جنيه)"
+              }
               value={line.rate}
               onChange={(v) => onChange({ rate: v })}
               step="1"
@@ -554,7 +586,9 @@ function LineCard({
             {fmtGrams(result.weight21)} <span className="text-xs opacity-70">عيار 21</span>
           </span>
         ) : null}
-        {result.cashAmount !== 0 ? <span className="tnum">{fmtMoney(result.cashAmount)}</span> : null}
+        {result.cashAmount !== 0 ? (
+          <span className="tnum">{fmtMoney(result.cashAmount)}</span>
+        ) : null}
         {result.weight21 === 0 && result.cashAmount === 0 ? (
           <span className="text-muted-foreground">—</span>
         ) : null}
