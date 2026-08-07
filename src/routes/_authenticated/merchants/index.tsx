@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import type { MerchantType } from "@/lib/gold-math";
 
-export const Route = createFileRoute("/_authenticated/merchants")({
+export const Route = createFileRoute("/_authenticated/merchants/")({
   head: () => ({
     meta: [
       { title: "التجار — دفتر الصاغة" },
