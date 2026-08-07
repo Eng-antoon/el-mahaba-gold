@@ -96,6 +96,7 @@ function NewTxnPage() {
 
   const { data: merchants = [] } = useQuery(merchantsQuery);
   const { data: categories = [] } = useQuery(categoriesQuery);
+  const { data: balances = [] } = useQuery(balancesQuery);
   const { data: existing } = useQuery({
     ...transactionQuery(search.transaction ?? "00000000-0000-0000-0000-000000000000"),
     enabled: Boolean(search.transaction),
@@ -173,6 +174,36 @@ function NewTxnPage() {
   const totalGold = results.reduce((s, r) => s + r.goldDelta, 0);
   const totalCash = results.reduce((s, r) => s + r.cashDelta, 0);
 
+  const affectedPreview = useMemo(() => {
+    if (!existing || !merchantId) return [];
+    const oldIds = [existing.merchant_id];
+    if (existing.kind === "transfer" && existing.counterparty_merchant_id) {
+      oldIds.push(existing.counterparty_merchant_id);
+    }
+    const newIds = [merchantId];
+    if (kind === "transfer" && counterparty) newIds.push(counterparty);
+
+    return [...new Set([...oldIds, ...newIds])].map((id) => {
+      const current = balances.find((balance) => balance.merchant_id === id);
+      const beforeGold = Number(current?.gold_21 ?? 0);
+      const beforeCash = Number(current?.cash ?? 0);
+      return {
+        id,
+        name: merchants.find((candidate) => candidate.id === id)?.name ?? "تاجر",
+        beforeGold,
+        beforeCash,
+        afterGold:
+          beforeGold -
+          (oldIds.includes(id) ? Number(existing.total_gold_21) : 0) +
+          (newIds.includes(id) ? totalGold : 0),
+        afterCash:
+          beforeCash -
+          (oldIds.includes(id) ? Number(existing.total_cash) : 0) +
+          (newIds.includes(id) ? totalCash : 0),
+      };
+    });
+  }, [balances, counterparty, existing, kind, merchantId, merchants, totalCash, totalGold]);
+
   const save = useMutation({
     mutationFn: async () => {
       if (!merchantId) throw new Error("اختار التاجر الأول");
@@ -182,6 +213,21 @@ function NewTxnPage() {
         return Math.abs(r.goldDelta) > 0 || Math.abs(r.cashDelta) > 0;
       });
       if (valid.length === 0) throw new Error("مافيش بنود مكتوبة");
+      if (needsGoldPrice && goldPrice <= 0) throw new Error("اكتب سعر جرام عيار 21 للحركة");
+      if (valid.some((line) => line.purity < 500 || line.purity > 1000)) {
+        throw new Error("راجع العيار؛ لازم يكون بين 500 و1000");
+      }
+      if (isGoodsKind && valid.some((line) => !line.categoryId)) {
+        throw new Error("اختار الصنف لكل بند");
+      }
+      if (
+        valid.some((line) => {
+          const category = categories.find((candidate) => candidate.id === line.categoryId);
+          return category?.tracks_count && line.pieces <= 0;
+        })
+      ) {
+        throw new Error("اكتب عدد الغوايش");
+      }
 
       const payloadLines = lines.flatMap((l, i) => {
         const r = results[i]!;
@@ -207,7 +253,7 @@ function NewTxnPage() {
           counterparty_merchant_id: kind === "transfer" ? counterparty : null,
           kind,
           txn_date: date,
-          gold_price_used: goldPrice || null,
+          gold_price_used: needsGoldPrice ? goldPrice || null : null,
           notes: notes.trim() || null,
           lines: payloadLines,
         },
@@ -392,19 +438,25 @@ function NewTxnPage() {
               التأكيد؛ النسخة القديمة والجديدة هيفضلوا محفوظين في سجل التعديلات.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="grid grid-cols-2 gap-3 rounded-xl bg-muted p-3 text-sm">
-            <div>
-              <p className="text-xs font-bold text-muted-foreground">قبل التعديل</p>
-              <p className="tnum mt-1 font-extrabold">
-                {fmtGrams(Number(existing?.total_gold_21 ?? 0))}
-              </p>
-              <p className="tnum font-extrabold">{fmtMoney(Number(existing?.total_cash ?? 0))}</p>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-muted-foreground">بعد التعديل</p>
-              <p className="tnum mt-1 font-extrabold">{fmtGrams(totalGold)}</p>
-              <p className="tnum font-extrabold">{fmtMoney(totalCash)}</p>
-            </div>
+          <div className="space-y-2">
+            {affectedPreview.map((row) => (
+              <div key={row.id} className="rounded-xl bg-muted p-3 text-sm">
+                <p className="mb-2 font-extrabold">{row.name}</p>
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-center">
+                  <div>
+                    <p className="text-[11px] font-bold text-muted-foreground">الرصيد الحالي</p>
+                    <p className="tnum mt-1 font-bold">{fmtGrams(row.beforeGold)}</p>
+                    <p className="tnum font-bold">{fmtMoney(row.beforeCash)}</p>
+                  </div>
+                  <span className="text-muted-foreground">←</span>
+                  <div>
+                    <p className="text-[11px] font-bold text-muted-foreground">بعد التعديل</p>
+                    <p className="tnum mt-1 font-extrabold">{fmtGrams(row.afterGold)}</p>
+                    <p className="tnum font-extrabold">{fmtMoney(row.afterCash)}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>رجوع</AlertDialogCancel>
@@ -539,6 +591,8 @@ function LineCard({
                   value={line.purity}
                   onChange={(v) => onChange({ purity: v })}
                   step="1"
+                  min={500}
+                  max={1000}
                 />
               ) : shape.purity === "choose" ? (
                 <ChipGroup
@@ -591,6 +645,11 @@ function LineCard({
         ) : null}
         {result.weight21 === 0 && result.cashAmount === 0 ? (
           <span className="text-muted-foreground">—</span>
+        ) : null}
+        {line.weight > 0 && result.weight21 !== 0 ? (
+          <span className="tnum w-full text-[11px] font-semibold text-muted-foreground">
+            {line.weight} جم × {line.purity} ÷ 875 = {fmtGrams(result.weight21)} عيار 21
+          </span>
         ) : null}
       </div>
     </Card>

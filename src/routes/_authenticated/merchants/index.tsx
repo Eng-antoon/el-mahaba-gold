@@ -56,10 +56,7 @@ function MerchantsPage() {
   const [type, setType] = useState<MerchantType>("jewelry");
   const [notes, setNotes] = useState("");
 
-  const balanceMap = useMemo(
-    () => new Map(balances.map((b) => [b.merchant_id, b])),
-    [balances],
-  );
+  const balanceMap = useMemo(() => new Map(balances.map((b) => [b.merchant_id, b])), [balances]);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -95,8 +92,7 @@ function MerchantsPage() {
   const list = useMemo(() => {
     const term = q.trim();
     return merchants.filter(
-      (m) =>
-        (filter === "all" || m.merchant_type === filter) && (!term || m.name.includes(term)),
+      (m) => (filter === "all" || m.merchant_type === filter) && (!term || m.name.includes(term)),
     );
   }, [merchants, q, filter]);
 

@@ -11,6 +11,8 @@ export function NumField({
   placeholder = "0",
   className,
   autoFocus,
+  min = 0,
+  max,
 }: {
   label: string;
   value: number | "";
@@ -20,6 +22,8 @@ export function NumField({
   placeholder?: string;
   className?: string;
   autoFocus?: boolean;
+  min?: number;
+  max?: number;
 }) {
   return (
     <div className={cn("space-y-1.5", className)}>
@@ -29,6 +33,8 @@ export function NumField({
           type="number"
           inputMode="decimal"
           step={step}
+          min={min}
+          max={max}
           autoFocus={autoFocus}
           value={value === 0 ? "" : value}
           placeholder={placeholder}

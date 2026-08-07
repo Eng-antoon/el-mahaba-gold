@@ -46,9 +46,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          الصفحة مافتحتش
-        </h1>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">الصفحة مافتحتش</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           حصلت مشكلة. جرّب تحدّث الصفحة أو ترجع للرئيسية.
         </p>
@@ -88,14 +86,27 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:title", content: "المحبة للذهب — دفتر الصاغة" },
       {
         property: "og:description",
-        content: "سجّل الوارد والمنصرف من الذهب والفلوس، واعرف على طول كل تاجر ليه كام وعليه كام بالجرام وبالجنيه.",
+        content:
+          "سجّل الوارد والمنصرف من الذهب والفلوس، واعرف على طول كل تاجر ليه كام وعليه كام بالجرام وبالجنيه.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "المحبة للذهب — دفتر الصاغة" },
-      { name: "twitter:description", content: "سجّل الوارد والمنصرف من الذهب والفلوس، واعرف على طول كل تاجر ليه كام وعليه كام بالجرام وبالجنيه." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8ddd37756785fc1ca24535f19310fab5/id-preview-49018ae2--f458d7ef-121b-4f37-986a-46584da06911.lovable.app-1786129008195.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8ddd37756785fc1ca24535f19310fab5/id-preview-49018ae2--f458d7ef-121b-4f37-986a-46584da06911.lovable.app-1786129008195.png" },
+      {
+        name: "twitter:description",
+        content:
+          "سجّل الوارد والمنصرف من الذهب والفلوس، واعرف على طول كل تاجر ليه كام وعليه كام بالجرام وبالجنيه.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8ddd37756785fc1ca24535f19310fab5/id-preview-49018ae2--f458d7ef-121b-4f37-986a-46584da06911.lovable.app-1786129008195.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8ddd37756785fc1ca24535f19310fab5/id-preview-49018ae2--f458d7ef-121b-4f37-986a-46584da06911.lovable.app-1786129008195.png",
+      },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
