@@ -646,7 +646,10 @@ function SelectedMerchant({
   onChange,
   compact = false,
 }: {
-  merchant: MerchantDirectoryRow;
+  merchant: Omit<MerchantDirectoryRow, "phone" | "last_txn_date"> & {
+    phone: string | null;
+    last_txn_date: string | null;
+  };
   onChange: () => void;
   compact?: boolean;
 }) {
