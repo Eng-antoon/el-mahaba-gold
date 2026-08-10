@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/brand-mark";
-import { PwaInstallButton } from "@/components/pwa-install";
+import { PwaInstallButton, PwaInstallPrompt } from "@/components/pwa-install";
 
 const NAV = [
   { to: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
@@ -71,6 +71,8 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
       >
         {children}
       </main>
+
+      <PwaInstallPrompt />
 
       {/* شريط تنقل سفلي للموبايل */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/98 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
