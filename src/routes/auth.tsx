@@ -12,9 +12,9 @@ import { z } from "zod";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "تسجيل الدخول — المحبة للذهب" },
+      { title: "تسجيل الدخول — Mahaba Gold" },
       { name: "description", content: "ادخل على حسابك لمتابعة أرصدة الذهب والفلوس مع التجار." },
-      { property: "og:title", content: "تسجيل الدخول — المحبة للذهب" },
+      { property: "og:title", content: "تسجيل الدخول — Mahaba Gold" },
       { property: "og:description", content: "ادخل على حسابك لمتابعة أرصدة الذهب والفلوس." },
     ],
   }),
@@ -93,7 +93,9 @@ export function AuthPage() {
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
           <BrandMark className="mx-auto h-14 w-14" />
-          <h1 className="mt-4 text-2xl font-extrabold">المحبة للذهب</h1>
+          <h1 dir="ltr" className="mt-4 text-2xl font-extrabold tracking-tight">
+            Mahaba Gold
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             دفتر الصاغة · حسابات الدهب والفلوس مع كل تاجر
           </p>

@@ -154,6 +154,8 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-tap-highlight-color: transparent;
+    min-width: 320px;
+    overflow-x: clip;
   }
 
   /* أرقام لاتينية داخل النصوص العربية للقراءة السريعة */
@@ -169,6 +171,32 @@
   }
   input[type="number"] {
     -moz-appearance: textfield;
+  }
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-enter {
+  animation: page-enter 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

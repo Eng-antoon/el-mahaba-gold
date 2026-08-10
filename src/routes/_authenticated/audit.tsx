@@ -1,10 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { History, UserRound } from "lucide-react";
+import { z } from "zod";
 import { AppShell } from "@/components/app-shell";
-import { auditQuery, profilesQuery } from "@/lib/db";
+import { auditInfiniteQuery, categoriesQuery, merchantsQuery, profilesQuery } from "@/lib/db";
 import { fmtDateTime } from "@/lib/gold-math";
-import { Input } from "@/components/ui/input";
+import { buildHumanAuditActivity } from "@/lib/audit-activity";
 import {
   Select,
   SelectContent,
@@ -18,55 +19,95 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { DateRangePicker } from "@/components/date-range-picker";
+import { LoadMore } from "@/components/load-more";
+import { QueryError, TransactionRowsSkeleton } from "@/components/loading-states";
+
+const searchSchema = z.object({
+  table: z.string().optional(),
+  operation: z.string().optional(),
+  actor: z.string().uuid().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+});
 
 export const Route = createFileRoute("/_authenticated/audit")({
-  head: () => ({ meta: [{ title: "سجل التعديلات — المحبة للذهب" }] }),
+  validateSearch: searchSchema,
+  head: () => ({ meta: [{ title: "سجل النشاط — Mahaba Gold" }] }),
   component: AuditPage,
 });
 
-const TABLE_LABELS: Record<string, string> = {
-  transactions: "حركة",
-  transaction_lines: "بند حركة",
-  merchants: "تاجر",
-  item_categories: "صنف",
-  user_roles: "صلاحية مستخدم",
-};
-const OP_LABELS: Record<string, string> = { INSERT: "إضافة", UPDATE: "تعديل", DELETE: "حذف" };
-
 function AuditPage() {
-  const { data: rows = [], isLoading } = useQuery(auditQuery);
-  const { data: profiles = [] } = useQuery(profilesQuery);
-  const [table, setTable] = useState("all");
-  const [operation, setOperation] = useState("all");
-  const [date, setDate] = useState("");
-  const names = new Map(profiles.map((p) => [p.id, p.full_name || "مستخدم"]));
-  const filtered = useMemo(
-    () =>
-      rows.filter(
-        (r) =>
-          (table === "all" || r.table_name === table) &&
-          (operation === "all" || r.operation === operation) &&
-          (!date || r.created_at.slice(0, 10) === date),
-      ),
-    [rows, table, operation, date],
+  const search = useSearch({ from: "/_authenticated/audit" });
+  const navigate = useNavigate();
+  const audit = useInfiniteQuery(
+    auditInfiniteQuery({
+      table: search.table,
+      operation: search.operation,
+      actorId: search.actor,
+      from: search.from,
+      to: search.to,
+    }),
   );
+  const rows = audit.data?.pages.flatMap((page) => page.rows) ?? [];
+  const { data: profiles = [] } = useQuery(profilesQuery);
+  const { data: merchants = [] } = useQuery(merchantsQuery);
+  const { data: categories = [] } = useQuery(categoriesQuery);
+  const table = search.table ?? "all";
+  const operation = search.operation ?? "all";
+  const actor = search.actor ?? "all";
+  const names = new Map(profiles.map((profile) => [profile.id, profile.full_name || "مستخدم"]));
+  const lookupMaps = {
+    users: names,
+    merchants: new Map(merchants.map((merchant) => [merchant.id, merchant.name])),
+    categories: new Map(categories.map((category) => [category.id, category.name_ar])),
+  };
+
+  function setFilters(patch: Partial<typeof search>) {
+    navigate({ to: "/audit", search: { ...search, ...patch }, replace: true });
+  }
 
   return (
-    <AppShell title="سجل التعديلات">
-      <div className="grid gap-3 border-b border-border pb-5 sm:grid-cols-3">
-        <Select value={table} onValueChange={setTable}>
-          <SelectTrigger className="h-11 bg-card">
+    <AppShell title="سجل النشاط">
+      <div className="grid gap-3 border-b border-border pb-5 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.4fr]">
+        <Select
+          value={actor}
+          onValueChange={(value) => setFilters({ actor: value === "all" ? undefined : value })}
+        >
+          <SelectTrigger className="h-10 bg-card">
+            <UserRound className="size-4 text-primary" />
+            <SelectValue placeholder="كل المستخدمين" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">كل المستخدمين</SelectItem>
+            {profiles.map((profile) => (
+              <SelectItem key={profile.id} value={profile.id}>
+                {profile.full_name || "مستخدم"}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={table}
+          onValueChange={(value) => setFilters({ table: value === "all" ? undefined : value })}
+        >
+          <SelectTrigger className="h-10 bg-card">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">كل السجلات</SelectItem>
+            <SelectItem value="all">كل أنواع النشاط</SelectItem>
             <SelectItem value="transactions">الحركات</SelectItem>
             <SelectItem value="merchants">التجار</SelectItem>
             <SelectItem value="transaction_lines">بنود الحركات</SelectItem>
+            <SelectItem value="item_categories">الأصناف</SelectItem>
+            <SelectItem value="user_roles">صلاحيات المستخدمين</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={operation} onValueChange={setOperation}>
-          <SelectTrigger className="h-11 bg-card">
+        <Select
+          value={operation}
+          onValueChange={(value) => setFilters({ operation: value === "all" ? undefined : value })}
+        >
+          <SelectTrigger className="h-10 bg-card">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -76,59 +117,106 @@ function AuditPage() {
             <SelectItem value="DELETE">حذف</SelectItem>
           </SelectContent>
         </Select>
-        <Input
-          type="date"
-          dir="ltr"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="h-11 bg-card"
+        <DateRangePicker
+          className="sm:col-span-2 xl:col-span-1"
+          value={search}
+          onCommit={(range) => setFilters(range)}
+          onClear={() => setFilters({ from: undefined, to: undefined })}
         />
       </div>
-      {isLoading ? (
-        <div className="py-16 text-center text-muted-foreground">جاري التحميل...</div>
+
+      {audit.isLoading ? (
+        <TransactionRowsSkeleton count={6} />
+      ) : audit.isError ? (
+        <QueryError onRetry={() => audit.refetch()} />
       ) : (
         <Accordion type="multiple" className="divide-y divide-border">
-          {filtered.map((row) => (
-            <AccordionItem key={row.id} value={String(row.id)} className="border-0">
-              <AccordionTrigger className="py-4 hover:no-underline">
-                <div className="min-w-0 text-start">
-                  <p className="font-extrabold">
-                    {OP_LABELS[row.operation] ?? row.operation}{" "}
-                    {TABLE_LABELS[row.table_name] ?? row.table_name}
-                  </p>
-                  <p className="text-xs font-normal text-muted-foreground">
-                    {fmtDateTime(row.created_at)} ·{" "}
-                    {row.actor_id ? (names.get(row.actor_id) ?? "مستخدم") : "النظام"}
-                  </p>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="grid gap-3 pb-4 md:grid-cols-2">
-                  {row.old_data ? <JsonBlock title="قبل" value={row.old_data} /> : null}
-                  {row.new_data ? <JsonBlock title="بعد" value={row.new_data} /> : null}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          ))}
+          {rows.map((row) => {
+            const activity = buildHumanAuditActivity(row, lookupMaps);
+            return (
+              <AccordionItem key={row.activity_key} value={row.activity_key} className="border-0">
+                <AccordionTrigger className="py-4 hover:no-underline">
+                  <div className="flex min-w-0 items-start gap-3 text-start">
+                    <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full bg-accent text-primary">
+                      <History className="size-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-extrabold">{activity.title}</p>
+                      {activity.description ? (
+                        <p className="truncate text-xs font-bold text-foreground/70">
+                          {activity.description}
+                        </p>
+                      ) : null}
+                      <p className="mt-1 text-xs font-normal text-muted-foreground">
+                        <bdi dir="ltr">{fmtDateTime(row.created_at)}</bdi>
+                        <span> · </span>
+                        {row.actor_id ? (names.get(row.actor_id) ?? "مستخدم") : "النظام"}
+                      </p>
+                    </div>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-3 pb-4 ps-12">
+                    {activity.changes.length ? (
+                      <div className="divide-y divide-border rounded-xl bg-muted/55 px-3">
+                        {activity.changes.map((change) => (
+                          <div
+                            key={`${row.activity_key}-${change.label}`}
+                            className="grid gap-1 py-2.5 text-sm sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center"
+                          >
+                            <span className="font-bold text-muted-foreground">{change.label}</span>
+                            <span className="min-w-0 font-semibold">
+                              {change.before !== undefined && change.after !== undefined ? (
+                                <>
+                                  <span className="text-muted-foreground line-through">
+                                    {change.before}
+                                  </span>
+                                  <span className="mx-2 text-muted-foreground">←</span>
+                                  <span>{change.after}</span>
+                                </>
+                              ) : (
+                                (change.after ?? change.before)
+                              )}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {activity.lines.length ? (
+                      <div className="space-y-2">
+                        {activity.lines.map((line) => (
+                          <div key={line.key} className="border-s-2 border-primary/35 ps-3">
+                            <p className="text-sm font-extrabold">{line.title}</p>
+                            <p className="tnum mt-1 text-xs font-semibold text-muted-foreground">
+                              {line.values.join(" · ")}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {!activity.changes.length && !activity.lines.length ? (
+                      <p className="text-sm text-muted-foreground">
+                        تم تسجيل النشاط بدون تفاصيل إضافية.
+                      </p>
+                    ) : null}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            );
+          })}
         </Accordion>
       )}
-      {!isLoading && filtered.length === 0 ? (
-        <div className="py-16 text-center text-muted-foreground">مافيش سجلات مطابقة.</div>
+      {audit.isFetchingNextPage ? <TransactionRowsSkeleton count={2} /> : null}
+      {!audit.isLoading && rows.length === 0 ? (
+        <div className="py-16 text-center text-muted-foreground">مافيش نشاط مطابق.</div>
       ) : null}
+      <LoadMore
+        hasMore={Boolean(audit.hasNextPage)}
+        loading={audit.isFetchingNextPage}
+        onClick={() => audit.fetchNextPage()}
+      />
     </AppShell>
-  );
-}
-
-function JsonBlock({ title, value }: { title: string; value: unknown }) {
-  return (
-    <div className="min-w-0 rounded-xl bg-muted p-3">
-      <p className="mb-2 text-xs font-bold text-muted-foreground">{title}</p>
-      <pre
-        dir="ltr"
-        className="max-h-72 overflow-auto whitespace-pre-wrap break-all text-[11px] leading-5"
-      >
-        {JSON.stringify(value, null, 2)}
-      </pre>
-    </div>
   );
 }

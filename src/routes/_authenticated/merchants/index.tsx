@@ -1,13 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { AppShell } from "@/components/app-shell";
 import { BalanceValue } from "@/components/balance-value";
 import { ChipGroup } from "@/components/chip-group";
-import { balancesQuery, merchantsQuery } from "@/lib/db";
+import { merchantDirectoryInfiniteQuery } from "@/lib/db";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,13 +23,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type { MerchantType } from "@/lib/gold-math";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { MerchantRowsSkeleton, QueryError } from "@/components/loading-states";
+import { LoadMore } from "@/components/load-more";
 
 export const Route = createFileRoute("/_authenticated/merchants/")({
   head: () => ({
     meta: [
-      { title: "التجار — المحبة للذهب" },
+      { title: "التجار — Mahaba Gold" },
       { name: "description", content: "كل التجار وأرصدتهم بالذهب والفلوس، وإضافة تاجر جديد." },
-      { property: "og:title", content: "التجار — المحبة للذهب" },
+      { property: "og:title", content: "التجار — Mahaba Gold" },
       { property: "og:description", content: "كل التجار وأرصدتهم بالذهب والفلوس." },
     ],
   }),
@@ -45,8 +48,6 @@ const merchantSchema = z.object({
 
 function MerchantsPage() {
   const qc = useQueryClient();
-  const { data: merchants = [] } = useQuery(merchantsQuery);
-  const { data: balances = [] } = useQuery(balancesQuery);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<"all" | MerchantType>("all");
@@ -56,7 +57,15 @@ function MerchantsPage() {
   const [type, setType] = useState<MerchantType>("jewelry");
   const [notes, setNotes] = useState("");
 
-  const balanceMap = useMemo(() => new Map(balances.map((b) => [b.merchant_id, b])), [balances]);
+  const search = useDebouncedValue(q.trim());
+  const directory = useInfiniteQuery(
+    merchantDirectoryInfiniteQuery({
+      search,
+      type: filter === "all" ? null : filter,
+      sort: "name",
+    }),
+  );
+  const list = directory.data?.pages.flatMap((page) => page.rows) ?? [];
 
   const create = useMutation({
     mutationFn: async () => {
@@ -85,16 +94,11 @@ function MerchantsPage() {
       setNotes("");
       qc.invalidateQueries({ queryKey: ["merchants"] });
       qc.invalidateQueries({ queryKey: ["balances"] });
+      qc.invalidateQueries({ queryKey: ["merchant_directory"] });
+      qc.invalidateQueries({ queryKey: ["balance_summary"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
-
-  const list = useMemo(() => {
-    const term = q.trim();
-    return merchants.filter(
-      (m) => (filter === "all" || m.merchant_type === filter) && (!term || m.name.includes(term)),
-    );
-  }, [merchants, q, filter]);
 
   return (
     <AppShell title="التجار">
@@ -184,18 +188,22 @@ function MerchantsPage() {
         />
       </div>
 
-      <div className="mt-4 space-y-2.5">
-        {list.length === 0 ? (
+      <div className="mt-4 divide-y divide-border border-y border-border">
+        {directory.isLoading ? (
+          <MerchantRowsSkeleton />
+        ) : directory.isError ? (
+          <QueryError onRetry={() => directory.refetch()} />
+        ) : list.length === 0 ? (
           <Card className="p-8 text-center text-sm text-muted-foreground">مافيش نتايج.</Card>
         ) : (
           list.map((m) => {
-            const b = balanceMap.get(m.id);
             return (
               <Link
-                key={m.id}
+                key={m.merchant_id}
                 to="/merchants/$id"
-                params={{ id: m.id }}
-                className="block rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-accent/25"
+                params={{ id: m.merchant_id }}
+                preload="intent"
+                className="group block py-4 transition-colors hover:bg-accent/20 sm:px-3"
               >
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                   <div className="min-w-0">
@@ -206,9 +214,9 @@ function MerchantsPage() {
                     </p>
                   </div>
                   <div className="shrink-0 text-end">
-                    <BalanceValue value={Number(b?.gold_21 ?? 0)} unit="gold" size="sm" />
+                    <BalanceValue value={Number(m.gold_21 ?? 0)} unit="gold" size="sm" />
                     <div>
-                      <BalanceValue value={Number(b?.cash ?? 0)} unit="cash" size="sm" />
+                      <BalanceValue value={Number(m.cash ?? 0)} unit="cash" size="sm" />
                     </div>
                   </div>
                 </div>
@@ -216,6 +224,14 @@ function MerchantsPage() {
             );
           })
         )}
+        {directory.isFetchingNextPage ? <MerchantRowsSkeleton count={2} /> : null}
+      </div>
+      <div className="mt-4">
+        <LoadMore
+          hasMore={Boolean(directory.hasNextPage)}
+          loading={directory.isFetchingNextPage}
+          onClick={() => directory.fetchNextPage()}
+        />
       </div>
     </AppShell>
   );

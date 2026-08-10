@@ -10,6 +10,7 @@ export type Database = {
     Tables: {
       audit_log: {
         Row: {
+          action_id: string | null;
           actor_id: string | null;
           created_at: string;
           id: number;
@@ -20,6 +21,7 @@ export type Database = {
           table_name: string;
         };
         Insert: {
+          action_id?: string | null;
           actor_id?: string | null;
           created_at?: string;
           id?: number;
@@ -30,6 +32,7 @@ export type Database = {
           table_name: string;
         };
         Update: {
+          action_id?: string | null;
           actor_id?: string | null;
           created_at?: string;
           id?: number;
@@ -147,7 +150,10 @@ export type Database = {
           category_id: string | null;
           created_at: string;
           gold_delta: number;
+          gold_price_per_gram: number | null;
           id: string;
+          is_return: boolean;
+          kind: Database["public"]["Enums"]["txn_kind"];
           label: string;
           method: Database["public"]["Enums"]["pay_method"] | null;
           pieces: number | null;
@@ -165,7 +171,10 @@ export type Database = {
           category_id?: string | null;
           created_at?: string;
           gold_delta?: number;
+          gold_price_per_gram?: number | null;
           id?: string;
+          is_return?: boolean;
+          kind: Database["public"]["Enums"]["txn_kind"];
           label?: string;
           method?: Database["public"]["Enums"]["pay_method"] | null;
           pieces?: number | null;
@@ -183,7 +192,10 @@ export type Database = {
           category_id?: string | null;
           created_at?: string;
           gold_delta?: number;
+          gold_price_per_gram?: number | null;
           id?: string;
+          is_return?: boolean;
+          kind?: Database["public"]["Enums"]["txn_kind"];
           label?: string;
           method?: Database["public"]["Enums"]["pay_method"] | null;
           pieces?: number | null;
@@ -219,6 +231,7 @@ export type Database = {
           created_by: string | null;
           gold_price_used: number | null;
           id: string;
+          is_account_settlement: boolean;
           kind: Database["public"]["Enums"]["txn_kind"];
           merchant_id: string;
           notes: string | null;
@@ -238,6 +251,7 @@ export type Database = {
           created_by?: string | null;
           gold_price_used?: number | null;
           id?: string;
+          is_account_settlement?: boolean;
           kind: Database["public"]["Enums"]["txn_kind"];
           merchant_id: string;
           notes?: string | null;
@@ -257,6 +271,7 @@ export type Database = {
           created_by?: string | null;
           gold_price_used?: number | null;
           id?: string;
+          is_account_settlement?: boolean;
           kind?: Database["public"]["Enums"]["txn_kind"];
           merchant_id?: string;
           notes?: string | null;
@@ -332,6 +347,46 @@ export type Database = {
           phone: string;
         }[];
       };
+      merchant_directory: {
+        Args: {
+          _search?: string | null;
+          _sort?: string | null;
+          _type?: Database["public"]["Enums"]["merchant_type"] | null;
+        };
+        Returns: {
+          cash: number;
+          gold_21: number;
+          last_txn_date: string | null;
+          merchant_id: string;
+          merchant_type: Database["public"]["Enums"]["merchant_type"];
+          name: string;
+          phone: string | null;
+        }[];
+      };
+      merchant_balance_summary: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          cash_credit: number;
+          cash_owed: number;
+          gold_credit: number;
+          gold_owed: number;
+        }[];
+      };
+      merchant_activity_totals: {
+        Args: { _from?: string; _merchant_id: string; _to?: string };
+        Returns: { cash: number; gold: number }[];
+      };
+      merchant_statement_balances: {
+        Args: { _from?: string; _merchant_id: string; _to?: string };
+        Returns: {
+          closing_cash: number;
+          closing_gold: number;
+          opening_cash: number;
+          opening_gold: number;
+          period_cash: number;
+          period_gold: number;
+        }[];
+      };
       merchant_purity_breakdown: {
         Args: { _merchant_id: string };
         Returns: {
@@ -347,6 +402,9 @@ export type Database = {
           created_at: string;
           gold_delta: number;
           kind: Database["public"]["Enums"]["txn_kind"];
+          line_kinds: Database["public"]["Enums"]["txn_kind"][];
+          has_returns: boolean;
+          is_account_settlement: boolean;
           notes: string | null;
           opening_cash: number;
           opening_gold: number;
@@ -361,6 +419,47 @@ export type Database = {
         Args: { _payload: Json; _transaction_id: string | null };
         Returns: string;
       };
+      merchant_statement_summary: {
+        Args: { _from?: string; _merchant_id: string; _to?: string };
+        Returns: {
+          total_bullion_received_21: number;
+          total_cash_paid: number;
+          total_cash_received: number;
+          total_jewelry_received_21: number;
+          total_scrap_paid_21: number;
+        }[];
+      };
+      settle_merchant_account: {
+        Args: { _merchant_id: string; _reason: string };
+        Returns: string;
+      };
+      visible_audit_log: {
+        Args: {
+          _from?: string | null;
+          _operation?: string | null;
+          _table_name?: string | null;
+          _to?: string | null;
+        };
+        Returns: Database["public"]["Tables"]["audit_log"]["Row"][];
+      };
+      visible_audit_activity: {
+        Args: {
+          _actor_id?: string | null;
+          _from?: string | null;
+          _operation?: string | null;
+          _table_name?: string | null;
+          _to?: string | null;
+        };
+        Returns: {
+          action_id: string | null;
+          activity_key: string;
+          actor_id: string | null;
+          created_at: string;
+          events: Json;
+          operations: string[];
+          table_names: string[];
+        }[];
+      };
       void_transaction: {
         Args: { _reason: string; _transaction_id: string };
         Returns: undefined;
@@ -371,6 +470,7 @@ export type Database = {
       merchant_type: "jewelry" | "raw";
       pay_method:
         | "cash"
+        | "cash_received"
         | "scrap_21"
         | "scrap_18"
         | "bar_cashback"
@@ -378,7 +478,7 @@ export type Database = {
         | "bandaqi"
         | "wage_to_gold"
         | "transfer";
-      txn_kind: "inbound" | "settlement" | "purchase" | "sale" | "transfer";
+      txn_kind: "inbound" | "settlement" | "purchase" | "sale" | "transfer" | "mixed";
       txn_status: "posted" | "voided";
     };
     CompositeTypes: {

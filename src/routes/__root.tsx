@@ -77,13 +77,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "المحبة للذهب — دفتر الصاغة" },
+      { title: "Mahaba Gold — دفتر الصاغة" },
+      { name: "theme-color", content: "#3b2013" },
+      { name: "application-name", content: "Mahaba Gold" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "Mahaba Gold" },
       {
         name: "description",
         content:
           "سجّل الوارد والمنصرف من الذهب والفلوس، واعرف على طول كل تاجر ليه كام وعليه كام بالجرام وبالجنيه.",
       },
-      { property: "og:title", content: "المحبة للذهب — دفتر الصاغة" },
+      { property: "og:title", content: "Mahaba Gold — دفتر الصاغة" },
       {
         property: "og:description",
         content:
@@ -91,7 +96,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "المحبة للذهب — دفتر الصاغة" },
+      { name: "twitter:title", content: "Mahaba Gold — دفتر الصاغة" },
       {
         name: "twitter:description",
         content:
@@ -99,17 +104,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       {
         property: "og:image",
-        content:
-          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8ddd37756785fc1ca24535f19310fab5/id-preview-49018ae2--f458d7ef-121b-4f37-986a-46584da06911.lovable.app-1786129008195.png",
+        content: "/mahaba-gold-mark.png",
       },
       {
         name: "twitter:image",
-        content:
-          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8ddd37756785fc1ca24535f19310fab5/id-preview-49018ae2--f458d7ef-121b-4f37-986a-46584da06911.lovable.app-1786129008195.png",
+        content: "/mahaba-gold-mark.png",
       },
     ],
     links: [
-      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "icon", type: "image/png", sizes: "32x32", href: "/icons/favicon-32.png" },
+      { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
+      { rel: "apple-touch-icon", sizes: "180x180", href: "/icons/apple-touch-icon.png" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
@@ -151,6 +157,11 @@ function RootComponent() {
     });
     return () => data.subscription.unsubscribe();
   }, [router, queryClient]);
+
+  useEffect(() => {
+    if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
+    void navigator.serviceWorker.register("/sw.js");
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

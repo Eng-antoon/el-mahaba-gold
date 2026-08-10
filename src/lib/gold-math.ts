@@ -35,8 +35,10 @@ export const OTHER_PURITY_FEE = 8;
 
 export type MerchantType = "jewelry" | "raw";
 export type TxnKind = "inbound" | "settlement" | "purchase" | "sale" | "transfer";
+export type DocumentTxnKind = TxnKind | "mixed";
 export type PayMethod =
   | "cash"
+  | "cash_received"
   | "scrap_21"
   | "scrap_18"
   | "bar_cashback"
@@ -45,24 +47,27 @@ export type PayMethod =
   | "wage_to_gold"
   | "transfer";
 
-export const KIND_LABELS: Record<TxnKind, string> = {
+export const KIND_LABELS: Record<DocumentTxnKind, string> = {
   inbound: "وارد (شغل داخل)",
   settlement: "تسديد",
   purchase: "شراء دهب",
   sale: "بيع دهب",
   transfer: "تحويل لتاجر آخر",
+  mixed: "حركة متنوعة",
 };
 
-export const KIND_SHORT: Record<TxnKind, string> = {
+export const KIND_SHORT: Record<DocumentTxnKind, string> = {
   inbound: "وارد",
   settlement: "تسديد",
   purchase: "شراء",
   sale: "بيع",
   transfer: "تحويل",
+  mixed: "حركة متنوعة",
 };
 
 export const METHOD_LABELS: Record<PayMethod, string> = {
   cash: "نقدية (فلوس)",
+  cash_received: "تحصيل نقدية",
   scrap_21: "كسر عيار 21",
   scrap_18: "كسر عيار 18",
   bar_cashback: "سبيكة كاشباك",
@@ -73,13 +78,14 @@ export const METHOD_LABELS: Record<PayMethod, string> = {
 };
 
 export const KINDS_BY_TYPE: Record<MerchantType, TxnKind[]> = {
-  jewelry: ["inbound", "settlement", "transfer"],
+  jewelry: ["inbound", "purchase", "settlement", "transfer"],
   raw: ["inbound", "purchase", "sale", "settlement", "transfer"],
 };
 
 export const METHODS_BY_TYPE: Record<MerchantType, PayMethod[]> = {
   jewelry: [
     "cash",
+    "cash_received",
     "scrap_21",
     "scrap_18",
     "bar_cashback",
@@ -87,7 +93,7 @@ export const METHODS_BY_TYPE: Record<MerchantType, PayMethod[]> = {
     "bandaqi",
     "wage_to_gold",
   ],
-  raw: ["cash", "bandaqi", "bar_other_purity", "bar_cashback", "wage_to_gold"],
+  raw: ["cash", "cash_received", "bandaqi", "bar_other_purity", "bar_cashback", "wage_to_gold"],
 };
 
 /** المدخلات المطلوبة لكل طريقة تسديد */
@@ -103,6 +109,7 @@ export interface MethodShape {
 export function methodShape(method: PayMethod): MethodShape {
   switch (method) {
     case "cash":
+    case "cash_received":
       return { weight: false, purity: "none", amount: true };
     case "scrap_21":
       return { weight: true, purity: "fixed", fixedPurity: 875, amount: false };
@@ -113,8 +120,7 @@ export function methodShape(method: PayMethod): MethodShape {
         weight: true,
         purity: "choose",
         fixedPurity: 1000,
-        rateLabel: "الكاشباك للجرام (جنيه)",
-        amount: false,
+        amount: true,
       };
     case "bar_other_purity":
       return { weight: true, purity: "free", fixedPurity: 830, amount: false };
@@ -139,6 +145,7 @@ export interface LineInput {
   amount: number;
   /** سعر جرام عيار 21 */
   goldPrice: number;
+  isReturn?: boolean;
 }
 
 export interface LineResult {
@@ -158,18 +165,28 @@ export function computeLine(input: LineInput): LineResult {
   if (input.kind === "inbound") {
     // شغل داخل: الدهب عليّ + المصنعية عليّ
     const cash = round2((input.weight || 0) * (input.rate || 0));
-    return { weight21: w21, cashAmount: cash, goldDelta: w21, cashDelta: cash };
+    const direction = input.isReturn ? -1 : 1;
+    return {
+      weight21: w21,
+      cashAmount: cash,
+      goldDelta: round2(direction * w21),
+      cashDelta: round2(direction * cash),
+    };
   }
 
   if (input.kind === "purchase") {
     // شراء دهب: الدهب ليّ + ثمنه عليّ
-    const price = round2(w21 * (input.goldPrice || 0) + (input.weight || 0) * (input.rate || 0));
+    const price = round2(
+      (input.weight || 0) * (input.goldPrice || 0) + (input.weight || 0) * (input.rate || 0),
+    );
     return { weight21: w21, cashAmount: price, goldDelta: -w21, cashDelta: price };
   }
 
   if (input.kind === "sale") {
     // بيع دهب: الدهب عليّ + الفلوس ليّ
-    const price = round2(w21 * (input.goldPrice || 0) + (input.weight || 0) * (input.rate || 0));
+    const price = round2(
+      (input.weight || 0) * (input.goldPrice || 0) + (input.weight || 0) * (input.rate || 0),
+    );
     return { weight21: w21, cashAmount: price, goldDelta: w21, cashDelta: -price };
   }
 
@@ -187,11 +204,15 @@ export function computeLine(input: LineInput): LineResult {
       const amt = round2(input.amount || 0);
       return { weight21: 0, cashAmount: amt, goldDelta: 0, cashDelta: -amt };
     }
+    case "cash_received": {
+      const amt = round2(input.amount || 0);
+      return { weight21: 0, cashAmount: amt, goldDelta: 0, cashDelta: amt };
+    }
     case "scrap_21":
     case "scrap_18":
       return { weight21: w21, cashAmount: 0, goldDelta: -w21, cashDelta: 0 };
     case "bar_cashback": {
-      const cashback = round2((input.weight || 0) * (input.rate || 0));
+      const cashback = round2(input.amount || 0);
       return { weight21: w21, cashAmount: cashback, goldDelta: -w21, cashDelta: -cashback };
     }
     case "bar_other_purity":

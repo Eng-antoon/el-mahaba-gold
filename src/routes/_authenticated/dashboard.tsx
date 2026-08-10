@@ -1,21 +1,25 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { PlusCircle, Search, BookOpenText } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { BalanceValue } from "@/components/balance-value";
-import { balancesQuery } from "@/lib/db";
+import { balanceSummaryQuery, merchantDirectoryInfiniteQuery } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { fmtDate, fmtNum } from "@/lib/gold-math";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { MerchantRowsSkeleton, QueryError } from "@/components/loading-states";
+import { LoadMore } from "@/components/load-more";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "الرئيسية — المحبة للذهب" },
+      { title: "الرئيسية — Mahaba Gold" },
       { name: "description", content: "إجمالي الذهب والنقدية اللي ليك واللي عليك من كل التجار." },
-      { property: "og:title", content: "الرئيسية — المحبة للذهب" },
+      { property: "og:title", content: "الرئيسية — Mahaba Gold" },
       { property: "og:description", content: "إجمالي الذهب والنقدية مع كل التجار في شاشة واحدة." },
     ],
   }),
@@ -23,46 +27,36 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 function Dashboard() {
-  const { data: balances = [], isLoading } = useQuery(balancesQuery);
   const [q, setQ] = useState("");
-
-  const totals = useMemo(() => {
-    let goldOwed = 0,
-      goldCredit = 0,
-      cashOwed = 0,
-      cashCredit = 0;
-    for (const b of balances) {
-      const g = Number(b.gold_21) || 0;
-      const c = Number(b.cash) || 0;
-      if (g > 0) goldOwed += g;
-      else goldCredit += -g;
-      if (c > 0) cashOwed += c;
-      else cashCredit += -c;
-    }
-    return { goldOwed, goldCredit, cashOwed, cashCredit };
-  }, [balances]);
-
-  const filtered = useMemo(() => {
-    const term = q.trim();
-    const list = term ? balances.filter((b) => b.name.includes(term)) : balances;
-    return [...list].sort((a, b) => Math.abs(Number(b.gold_21)) - Math.abs(Number(a.gold_21)));
-  }, [balances, q]);
+  const search = useDebouncedValue(q.trim());
+  const { data: totals, isLoading: summaryLoading } = useQuery(balanceSummaryQuery);
+  const directory = useInfiniteQuery(merchantDirectoryInfiniteQuery({ search, sort: "exposure" }));
+  const rows = directory.data?.pages.flatMap((page) => page.rows) ?? [];
 
   return (
     <AppShell title="الرئيسية">
       <div className="grid gap-3 sm:grid-cols-2">
-        <SummaryCard
-          title="الدهب"
-          unit="جم عيار 21"
-          owed={totals.goldOwed}
-          credit={totals.goldCredit}
-        />
-        <SummaryCard
-          title="النقدية"
-          unit="جنيه"
-          owed={totals.cashOwed}
-          credit={totals.cashCredit}
-        />
+        {summaryLoading ? (
+          <>
+            <Skeleton className="h-48 rounded-xl" />
+            <Skeleton className="h-48 rounded-xl" />
+          </>
+        ) : (
+          <>
+            <SummaryCard
+              title="الدهب"
+              unit="جم عيار 21"
+              owed={Number(totals?.gold_owed ?? 0)}
+              credit={Number(totals?.gold_credit ?? 0)}
+            />
+            <SummaryCard
+              title="النقدية"
+              unit="جنيه"
+              owed={Number(totals?.cash_owed ?? 0)}
+              credit={Number(totals?.cash_credit ?? 0)}
+            />
+          </>
+        )}
       </div>
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
@@ -94,9 +88,11 @@ function Dashboard() {
       </div>
 
       <div className="mt-3 space-y-2.5">
-        {isLoading ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">جاري التحميل...</p>
-        ) : filtered.length === 0 ? (
+        {directory.isLoading ? (
+          <MerchantRowsSkeleton />
+        ) : directory.isError ? (
+          <QueryError onRetry={() => directory.refetch()} />
+        ) : rows.length === 0 ? (
           <Card className="p-8 text-center">
             <p className="text-sm text-muted-foreground">مافيش تجار لسه.</p>
             <Button asChild className="mt-4 font-bold">
@@ -104,7 +100,7 @@ function Dashboard() {
             </Button>
           </Card>
         ) : (
-          filtered.map((b) => (
+          rows.map((b) => (
             <Link
               key={b.merchant_id}
               to="/merchants/$id"
@@ -116,7 +112,12 @@ function Dashboard() {
                   <p className="truncate text-base font-bold">{b.name}</p>
                   <p className="text-xs font-semibold text-muted-foreground">
                     {b.merchant_type === "raw" ? "تاجر خام" : "تاجر مشغولات"}
-                    {b.last_txn_date ? ` · آخر حركة ${fmtDate(b.last_txn_date)}` : ""}
+                    {b.last_txn_date ? (
+                      <>
+                        {" · آخر حركة "}
+                        <bdi dir="ltr">{fmtDate(b.last_txn_date)}</bdi>
+                      </>
+                    ) : null}
                   </p>
                 </div>
                 <div className="shrink-0 text-end">
@@ -129,7 +130,13 @@ function Dashboard() {
             </Link>
           ))
         )}
+        {directory.isFetchingNextPage ? <MerchantRowsSkeleton count={2} /> : null}
       </div>
+      <LoadMore
+        hasMore={Boolean(directory.hasNextPage)}
+        loading={directory.isFetchingNextPage}
+        onClick={() => directory.fetchNextPage()}
+      />
     </AppShell>
   );
 }

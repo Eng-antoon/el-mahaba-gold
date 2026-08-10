@@ -8,6 +8,7 @@ const base = {
   rate: 0,
   amount: 0,
   goldPrice: 0,
+  isReturn: false,
 };
 
 describe("gold conversion", () => {
@@ -43,6 +44,35 @@ describe("ledger movements", () => {
     });
   });
 
+  test("cash receipt increases the cash ledger explicitly", () => {
+    expect(
+      computeLine({ ...base, kind: "settlement", method: "cash_received", amount: 5000 }),
+    ).toEqual({
+      weight21: 0,
+      cashAmount: 5000,
+      goldDelta: 0,
+      cashDelta: 5000,
+    });
+  });
+
+  test("returned inbound merchandise reduces gold and workmanship", () => {
+    expect(
+      computeLine({
+        ...base,
+        kind: "inbound",
+        isReturn: true,
+        purity: 750,
+        weight: 100,
+        rate: 300,
+      }),
+    ).toEqual({
+      weight21: 85.71,
+      cashAmount: 30000,
+      goldDelta: -85.71,
+      cashDelta: -30000,
+    });
+  });
+
   test("18-karat scrap reduces the converted gold debt", () => {
     expect(
       computeLine({ ...base, kind: "settlement", method: "scrap_18", purity: 750, weight: 50 }),
@@ -61,13 +91,31 @@ describe("ledger movements", () => {
         method: "bar_cashback",
         purity: 1000,
         weight: 10,
-        rate: 25,
+        amount: 250,
       }),
     ).toEqual({
       weight21: 11.43,
       cashAmount: 250,
       goldDelta: -11.43,
       cashDelta: -250,
+    });
+  });
+
+  test("purchase price uses physical line weight rather than 21k-equivalent weight", () => {
+    expect(
+      computeLine({
+        ...base,
+        kind: "purchase",
+        purity: 750,
+        weight: 10,
+        rate: 20,
+        goldPrice: 5000,
+      }),
+    ).toEqual({
+      weight21: 8.57,
+      cashAmount: 50200,
+      goldDelta: -8.57,
+      cashDelta: 50200,
     });
   });
 

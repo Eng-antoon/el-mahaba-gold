@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#3b2013" />
+    <title>غير متصل — Mahaba Gold</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Cairo", system-ui, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-width: 320px;
+        min-height: 100svh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: #fff9ed;
+        color: #33251d;
+      }
+      main {
+        width: min(100%, 420px);
+        text-align: center;
+      }
+      img {
+        width: 84px;
+        height: 84px;
+        border-radius: 22px;
+      }
+      h1 {
+        margin: 22px 0 8px;
+        font-size: 24px;
+      }
+      p {
+        margin: 0;
+        color: #765f50;
+        line-height: 1.8;
+      }
+      button {
+        margin-top: 24px;
+        min-height: 44px;
+        border: 0;
+        border-radius: 12px;
+        padding: 0 22px;
+        background: #9c6724;
+        color: #fff9ed;
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icons/icon-192.png" alt="Mahaba Gold" />
+      <h1>محتاج اتصال بالإنترنت</h1>
+      <p>بيانات الحسابات والحركات لا تُحفظ على الجهاز. اتصل بالإنترنت وجرّب مرة تانية.</p>
+      <button type="button" onclick="location.reload()">حاول تاني</button>
+    </main>
+  </body>
+</html>

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Pencil, Plus, Search, Store, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { AppShell } from "@/components/app-shell";
@@ -16,16 +16,17 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   balancesQuery,
   categoriesQuery,
-  merchantsQuery,
+  merchantDirectoryInfiniteQuery,
+  merchantQuery,
   transactionQuery,
   type ItemCategory,
+  type MerchantDirectoryRow,
 } from "@/lib/db";
 import {
   computeLine,
   fmtGrams,
   fmtMoney,
   KIND_LABELS,
-  KINDS_BY_TYPE,
   METHOD_LABELS,
   METHODS_BY_TYPE,
   methodShape,
@@ -45,6 +46,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { MerchantRowsSkeleton, QueryError } from "@/components/loading-states";
+import { LoadMore } from "@/components/load-more";
+import { cn } from "@/lib/utils";
+import { transactionLineSummary } from "@/lib/transaction-line-summary";
 
 const searchSchema = z.object({
   merchant: z.string().optional(),
@@ -56,9 +62,9 @@ export const Route = createFileRoute("/_authenticated/new")({
   validateSearch: searchSchema,
   head: () => ({
     meta: [
-      { title: "حركة — المحبة للذهب" },
+      { title: "حركة — Mahaba Gold" },
       { name: "description", content: "سجّل وارد أو تسديد أو شراء وبيع دهب مع أي تاجر بسرعة." },
-      { property: "og:title", content: "حركة — المحبة للذهب" },
+      { property: "og:title", content: "حركة — Mahaba Gold" },
       { property: "og:description", content: "سجّل وارد أو تسديد أو شراء وبيع دهب مع أي تاجر." },
     ],
   }),
@@ -67,6 +73,8 @@ export const Route = createFileRoute("/_authenticated/new")({
 
 interface DraftLine {
   key: string;
+  kind: TxnKind;
+  isReturn: boolean;
   categoryId: string | null;
   method: PayMethod | null;
   purity: number;
@@ -74,11 +82,14 @@ interface DraftLine {
   pieces: number;
   rate: number;
   amount: number;
+  goldPrice: number;
 }
 
-function newLine(purity = 875): DraftLine {
+function newLine(kind: TxnKind = "inbound", purity = 875): DraftLine {
   return {
     key: Math.random().toString(36).slice(2),
+    kind,
+    isReturn: false,
     categoryId: null,
     method: null,
     purity,
@@ -86,46 +97,77 @@ function newLine(purity = 875): DraftLine {
     pieces: 0,
     rate: 0,
     amount: 0,
+    goldPrice: 0,
   };
 }
+
+type DocumentMode = "lines" | "sale" | "transfer";
+type LineChoice = "inbound" | "settlement" | "purchase" | "return";
 
 function NewTxnPage() {
   const search = useSearch({ from: "/_authenticated/new" });
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const { data: merchants = [] } = useQuery(merchantsQuery);
+  const [merchantId, setMerchantId] = useState<string | null>(search.merchant ?? null);
+  const [pickedMerchant, setPickedMerchant] = useState<MerchantDirectoryRow | null>(null);
+  const [mode, setMode] = useState<DocumentMode>(
+    search.kind === "sale" || search.kind === "transfer" ? search.kind : "lines",
+  );
+  const [date, setDate] = useState(todayISO());
+  const [notes, setNotes] = useState("");
+  const [counterparty, setCounterparty] = useState<string | null>(null);
+  const [pickedCounterparty, setPickedCounterparty] = useState<MerchantDirectoryRow | null>(null);
+  const [lines, setLines] = useState<DraftLine[]>([newLine(search.kind ?? "inbound")]);
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(() => new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const hydrated = useRef(false);
+
   const { data: categories = [] } = useQuery(categoriesQuery);
-  const { data: balances = [] } = useQuery(balancesQuery);
-  const { data: existing } = useQuery({
+  const { data: existing, isError: transactionUnavailable } = useQuery({
     ...transactionQuery(search.transaction ?? "00000000-0000-0000-0000-000000000000"),
     enabled: Boolean(search.transaction),
   });
-
-  const [merchantId, setMerchantId] = useState<string | null>(search.merchant ?? null);
-  const [kind, setKind] = useState<TxnKind>(search.kind ?? "inbound");
-  const [date, setDate] = useState(todayISO());
-  const [goldPrice, setGoldPrice] = useState(0);
-  const [notes, setNotes] = useState("");
-  const [counterparty, setCounterparty] = useState<string | null>(null);
-  const [lines, setLines] = useState<DraftLine[]>([newLine()]);
-  const [karat, setKarat] = useState(875);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const hydrated = useRef(false);
+  const { data: merchant } = useQuery({
+    ...merchantQuery(merchantId ?? "00000000-0000-0000-0000-000000000000"),
+    enabled: Boolean(merchantId),
+  });
+  const { data: counterpartyMerchant } = useQuery({
+    ...merchantQuery(counterparty ?? "00000000-0000-0000-0000-000000000000"),
+    enabled: Boolean(counterparty),
+  });
+  const { data: editMerchants = [] } = useQuery({
+    queryKey: ["merchants", "edit-preview"],
+    enabled: Boolean(search.transaction),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("merchants")
+        .select("*")
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw new Error(error.message);
+      return data;
+    },
+  });
+  const { data: balances = [] } = useQuery({
+    ...balancesQuery,
+    enabled: Boolean(search.transaction),
+  });
 
   useEffect(() => {
     if (!existing || hydrated.current) return;
     hydrated.current = true;
     setMerchantId(existing.merchant_id);
-    setKind(existing.kind);
+    setMode(existing.kind === "sale" || existing.kind === "transfer" ? existing.kind : "lines");
     setDate(existing.txn_date);
-    setGoldPrice(Number(existing.gold_price_used ?? 0));
     setNotes(existing.notes ?? "");
     setCounterparty(existing.counterparty_merchant_id);
     const loaded = [...existing.transaction_lines]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((l) => ({
         key: l.id,
+        kind: l.kind as TxnKind,
+        isReturn: l.is_return,
         categoryId: l.category_id,
         method: l.method,
         purity: Number(l.purity),
@@ -133,41 +175,42 @@ function NewTxnPage() {
         pieces: Number(l.pieces ?? 0),
         rate: Number(l.rate_per_gram),
         amount:
-          l.method === "cash" || l.method === "wage_to_gold" || existing.kind === "transfer"
+          l.method === "cash" ||
+          l.method === "cash_received" ||
+          l.method === "wage_to_gold" ||
+          l.method === "bar_cashback" ||
+          l.kind === "transfer"
             ? Number(l.cash_amount)
             : 0,
+        goldPrice: Number(l.gold_price_per_gram ?? existing.gold_price_used ?? 0),
       }));
     setLines(loaded.length ? loaded : [newLine()]);
-    setKarat(Number(loaded[0]?.purity ?? 875));
+    setCollapsedKeys(new Set(loaded.map((line) => line.key)));
   }, [existing]);
 
-  const merchant = merchants.find((m) => m.id === merchantId) ?? null;
-  const mType: MerchantType = (merchant?.merchant_type ?? "jewelry") as MerchantType;
-  const allowedKinds = KINDS_BY_TYPE[mType];
-
+  const mType: MerchantType = (merchant?.merchant_type ??
+    pickedMerchant?.merchant_type ??
+    "jewelry") as MerchantType;
   useEffect(() => {
-    if (!allowedKinds.includes(kind)) setKind(allowedKinds[0]!);
-  }, [allowedKinds, kind]);
+    if (mode === "sale" && mType !== "raw") setMode("lines");
+  }, [mType, mode]);
 
   const scopedCategories = useMemo(
     () => categories.filter((c) => c.scope === mType),
     [categories, mType],
   );
 
-  const isGoodsKind = kind === "inbound" || kind === "purchase" || kind === "sale";
-  const needsGoldPrice =
-    kind === "purchase" || kind === "sale" || lines.some((line) => line.method === "wage_to_gold");
-
   const results = lines.map((l) =>
     computeLine({
-      kind,
-      method: kind === "settlement" ? l.method : kind === "transfer" ? "transfer" : null,
+      kind: l.kind,
+      isReturn: l.isReturn,
+      method: l.kind === "settlement" ? l.method : l.kind === "transfer" ? "transfer" : null,
       purity: l.purity,
       weight: l.weight,
       pieces: l.pieces,
       rate: l.rate,
       amount: l.amount,
-      goldPrice,
+      goldPrice: l.goldPrice,
     }),
   );
 
@@ -181,7 +224,7 @@ function NewTxnPage() {
       oldIds.push(existing.counterparty_merchant_id);
     }
     const newIds = [merchantId];
-    if (kind === "transfer" && counterparty) newIds.push(counterparty);
+    if (mode === "transfer" && counterparty) newIds.push(counterparty);
 
     return [...new Set([...oldIds, ...newIds])].map((id) => {
       const current = balances.find((balance) => balance.merchant_id === id);
@@ -189,7 +232,7 @@ function NewTxnPage() {
       const beforeCash = Number(current?.cash ?? 0);
       return {
         id,
-        name: merchants.find((candidate) => candidate.id === id)?.name ?? "تاجر",
+        name: editMerchants.find((candidate) => candidate.id === id)?.name ?? "تاجر",
         beforeGold,
         beforeCash,
         afterGold:
@@ -202,23 +245,40 @@ function NewTxnPage() {
           (newIds.includes(id) ? totalCash : 0),
       };
     });
-  }, [balances, counterparty, existing, kind, merchantId, merchants, totalCash, totalGold]);
+  }, [balances, counterparty, editMerchants, existing, merchantId, mode, totalCash, totalGold]);
 
   const save = useMutation({
     mutationFn: async () => {
       if (!merchantId) throw new Error("اختار التاجر الأول");
-      if (kind === "transfer" && !counterparty) throw new Error("اختار التاجر المحوَّل له");
+      if (mode === "transfer" && !counterparty) throw new Error("اختار التاجر المحوَّل له");
       const valid = lines.filter((l, i) => {
         const r = results[i]!;
         return Math.abs(r.goldDelta) > 0 || Math.abs(r.cashDelta) > 0;
       });
       if (valid.length === 0) throw new Error("مافيش بنود مكتوبة");
-      if (needsGoldPrice && goldPrice <= 0) throw new Error("اكتب سعر جرام عيار 21 للحركة");
+      if (
+        valid.some(
+          (line) =>
+            (line.kind === "purchase" ||
+              line.kind === "sale" ||
+              (line.kind === "settlement" && line.method === "wage_to_gold")) &&
+            line.goldPrice <= 0,
+        )
+      ) {
+        throw new Error("اكتب سعر الجرام لكل بند محتاج سعر");
+      }
       if (valid.some((line) => line.purity < 500 || line.purity > 1000)) {
         throw new Error("راجع العيار؛ لازم يكون بين 500 و1000");
       }
-      if (isGoodsKind && valid.some((line) => !line.categoryId)) {
-        throw new Error("اختار الصنف لكل بند");
+      if (
+        valid.some(
+          (line) =>
+            ["inbound", "purchase", "sale"].includes(line.kind) &&
+            !(mType === "raw" && line.purity === 991) &&
+            !line.categoryId,
+        )
+      ) {
+        throw new Error("اختار الصنف لكل بند مشغولات أو خام");
       }
       if (
         valid.some((line) => {
@@ -237,12 +297,15 @@ function NewTxnPage() {
           {
             category_id: l.categoryId,
             label: cat?.name_ar ?? (l.method ? METHOD_LABELS[l.method] : ""),
-            method: kind === "settlement" ? l.method : kind === "transfer" ? "transfer" : null,
+            kind: l.kind,
+            is_return: l.isReturn,
+            method: l.kind === "settlement" ? l.method : l.kind === "transfer" ? "transfer" : null,
             purity: l.purity,
             weight: l.weight,
             pieces: cat?.tracks_count && l.pieces ? l.pieces : null,
             rate: l.rate,
             amount: l.amount,
+            gold_price: l.goldPrice || null,
           },
         ];
       });
@@ -250,10 +313,10 @@ function NewTxnPage() {
         _transaction_id: search.transaction ?? null,
         _payload: {
           merchant_id: merchantId,
-          counterparty_merchant_id: kind === "transfer" ? counterparty : null,
-          kind,
+          counterparty_merchant_id: mode === "transfer" ? counterparty : null,
+          kind: mode === "lines" ? (lines[0]?.kind ?? "inbound") : mode,
           txn_date: date,
-          gold_price_used: needsGoldPrice ? goldPrice || null : null,
+          gold_price_used: null,
           notes: notes.trim() || null,
           lines: payloadLines,
         },
@@ -273,119 +336,203 @@ function NewTxnPage() {
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   }
 
+  function chooseMerchant(row: MerchantDirectoryRow) {
+    const nextMode: DocumentMode =
+      search.kind === "transfer" || (search.kind === "sale" && row.merchant_type === "raw")
+        ? search.kind
+        : "lines";
+    setPickedMerchant(row);
+    setMerchantId(row.merchant_id);
+    setCounterparty(null);
+    setPickedCounterparty(null);
+    setMode(nextMode);
+    setLines([newLine(nextMode === "lines" ? (search.kind ?? "inbound") : nextMode)]);
+    setCollapsedKeys(new Set());
+  }
+
+  if (search.transaction && transactionUnavailable) {
+    return (
+      <AppShell title="الحركة غير متاحة">
+        <Card className="p-8 text-center text-muted-foreground">
+          الحركة غير موجودة أو لم تعد متاحة.
+        </Card>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell title={search.transaction ? "تعديل حركة" : "حركة جديدة"}>
-      <div className="space-y-4 pb-32">
-        <Card className="space-y-4 p-4">
-          <ChipGroup
-            label="التاجر"
-            value={merchantId}
-            onChange={(v) => setMerchantId(v)}
-            options={merchants.map((m) => ({
-              value: m.id,
-              label: m.name,
-              hint: m.merchant_type === "raw" ? "خام" : "مشغولات",
-            }))}
-          />
-          {merchants.length === 0 ? (
-            <p className="text-sm text-muted-foreground">أضف تاجر الأول من صفحة التجار.</p>
-          ) : null}
-        </Card>
+      <div className="space-y-6 pb-32">
+        <section className="border-b border-border pb-6">
+          <StepHeading number="1" title="اختار التاجر" done={Boolean(merchantId)} />
+          {merchantId && (merchant || pickedMerchant) ? (
+            <SelectedMerchant
+              merchant={
+                pickedMerchant ?? {
+                  merchant_id: merchant!.id,
+                  name: merchant!.name,
+                  merchant_type: merchant!.merchant_type,
+                  phone: merchant!.phone,
+                  gold_21: 0,
+                  cash: 0,
+                  last_txn_date: null,
+                }
+              }
+              onChange={() => {
+                setMerchantId(null);
+                setPickedMerchant(null);
+                setCounterparty(null);
+                setPickedCounterparty(null);
+              }}
+            />
+          ) : (
+            <MerchantPicker selectedId={merchantId} onSelect={chooseMerchant} />
+          )}
+        </section>
 
         {merchantId ? (
           <>
-            <Card className="space-y-4 p-4">
+            <section className="page-enter space-y-4 border-b border-border pb-6">
+              <StepHeading number="2" title="تفاصيل الحركة" />
               <ChipGroup
-                label="نوع الحركة"
-                value={kind}
+                label="طريقة التسجيل"
+                value={mode}
                 onChange={(v) => {
-                  setKind(v);
-                  setLines([newLine(v === "inbound" ? karat : 875)]);
+                  setMode(v);
+                  setCounterparty(null);
+                  setPickedCounterparty(null);
+                  setLines([newLine(v === "lines" ? "inbound" : v)]);
+                  setCollapsedKeys(new Set());
                 }}
-                options={allowedKinds.map((k) => ({ value: k, label: KIND_LABELS[k] }))}
+                options={[
+                  { value: "lines", label: "بنود متنوعة" },
+                  ...(mType === "raw" ? [{ value: "sale" as const, label: KIND_LABELS.sale }] : []),
+                  { value: "transfer", label: KIND_LABELS.transfer },
+                ]}
               />
 
-              <div className={needsGoldPrice ? "grid gap-3 sm:grid-cols-2" : "grid gap-3"}>
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-bold">التاريخ</Label>
-                  <Input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="tnum h-12 text-base"
-                    dir="ltr"
-                  />
-                </div>
-                {needsGoldPrice ? (
-                  <NumField
-                    label="سعر جرام عيار 21 للحركة (جنيه)"
-                    value={goldPrice}
-                    onChange={setGoldPrice}
-                    step="1"
-                  />
-                ) : null}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-bold">التاريخ</Label>
+                <Input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="tnum h-12 text-start text-base"
+                  dir="rtl"
+                />
               </div>
 
-              {kind === "transfer" ? (
-                <ChipGroup
-                  label="محوَّل لحساب"
-                  value={counterparty}
-                  onChange={setCounterparty}
-                  options={merchants
-                    .filter((m) => m.id !== merchantId)
-                    .map((m) => ({ value: m.id, label: m.name }))}
-                />
+              {mode === "transfer" ? (
+                <div className="space-y-2">
+                  <Label className="font-bold">محوَّل لحساب</Label>
+                  {counterparty && (counterpartyMerchant || pickedCounterparty) ? (
+                    <SelectedMerchant
+                      compact
+                      merchant={
+                        pickedCounterparty ?? {
+                          merchant_id: counterpartyMerchant!.id,
+                          name: counterpartyMerchant!.name,
+                          merchant_type: counterpartyMerchant!.merchant_type,
+                          phone: counterpartyMerchant!.phone,
+                          gold_21: 0,
+                          cash: 0,
+                          last_txn_date: null,
+                        }
+                      }
+                      onChange={() => {
+                        setCounterparty(null);
+                        setPickedCounterparty(null);
+                      }}
+                    />
+                  ) : (
+                    <MerchantPicker
+                      compact
+                      selectedId={counterparty}
+                      excludeId={merchantId}
+                      onSelect={(row) => {
+                        setCounterparty(row.merchant_id);
+                        setPickedCounterparty(row);
+                      }}
+                    />
+                  )}
+                </div>
               ) : null}
-
-              {isGoodsKind ? (
-                <ChipGroup
-                  label="العيار"
-                  value={karat}
-                  onChange={(v) => {
-                    setKarat(v);
-                    setLines((prev) => prev.map((l) => ({ ...l, purity: v })));
-                  }}
-                  options={
-                    mType === "jewelry"
-                      ? [
-                          { value: 875, label: "عيار 21" },
-                          { value: 750, label: "عيار 18" },
-                        ]
-                      : PURITIES.map((p) => ({ value: p.value, label: p.label }))
-                  }
-                />
-              ) : null}
-            </Card>
+            </section>
 
             <div className="space-y-3">
-              {lines.map((line, i) => (
-                <LineCard
-                  key={line.key}
-                  index={i}
-                  line={line}
-                  kind={kind}
-                  mType={mType}
-                  categories={scopedCategories}
-                  result={results[i]!}
-                  onChange={(patch) => updateLine(line.key, patch)}
-                  onRemove={
-                    lines.length > 1
-                      ? () => setLines((prev) => prev.filter((l) => l.key !== line.key))
-                      : undefined
-                  }
-                />
-              ))}
+              <StepHeading number="3" title="اكتب البنود" />
+              {lines.map((line, i) => {
+                const remove =
+                  lines.length > 1
+                    ? () => {
+                        setLines((prev) => prev.filter((candidate) => candidate.key !== line.key));
+                        setCollapsedKeys((prev) => {
+                          const next = new Set(prev);
+                          next.delete(line.key);
+                          return next;
+                        });
+                      }
+                    : undefined;
+                return collapsedKeys.has(line.key) ? (
+                  <LineSummary
+                    key={line.key}
+                    index={i}
+                    line={line}
+                    result={results[i]!}
+                    categories={scopedCategories}
+                    onEdit={() =>
+                      setCollapsedKeys((prev) => {
+                        const next = new Set(prev);
+                        next.delete(line.key);
+                        return next;
+                      })
+                    }
+                    onRemove={remove}
+                  />
+                ) : (
+                  <LineCard
+                    key={line.key}
+                    index={i}
+                    line={line}
+                    lockedKind={mode === "lines" ? undefined : mode}
+                    mType={mType}
+                    categories={scopedCategories}
+                    result={results[i]!}
+                    onChange={(patch) => updateLine(line.key, patch)}
+                    onCollapse={() =>
+                      setCollapsedKeys((prev) => {
+                        const next = new Set(prev);
+                        next.add(line.key);
+                        return next;
+                      })
+                    }
+                    onRemove={remove}
+                  />
+                );
+              })}
               <Button
                 variant="outline"
                 className="h-12 w-full gap-2 font-bold"
-                onClick={() => setLines((prev) => [...prev, newLine(isGoodsKind ? karat : 875)])}
+                onClick={() => {
+                  setCollapsedKeys(
+                    new Set(
+                      lines
+                        .filter((_, index) => {
+                          const result = results[index]!;
+                          return Math.abs(result.goldDelta) > 0 || Math.abs(result.cashDelta) > 0;
+                        })
+                        .map((line) => line.key),
+                    ),
+                  );
+                  setLines((prev) => [...prev, newLine(mode === "lines" ? "inbound" : mode)]);
+                }}
               >
                 <Plus className="h-4 w-4" />
-                بند إضافي (نفس الشروة)
+                بند إضافي
               </Button>
             </div>
 
-            <Card className="space-y-3 p-4">
+            <section className="space-y-3 border-t border-border pt-5">
               <div className="space-y-1.5">
                 <Label className="text-sm font-bold">ملاحظات</Label>
                 <Textarea
@@ -396,7 +543,7 @@ function NewTxnPage() {
                   placeholder="اختياري"
                 />
               </div>
-            </Card>
+            </section>
           </>
         ) : null}
       </div>
@@ -406,7 +553,7 @@ function NewTxnPage() {
           <div className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <div className="min-w-0 space-y-0.5">
               <p className="truncate text-xs font-bold text-muted-foreground">
-                أثر الحركة على حساب {merchant?.name}
+                إجمالي الذهب المستحق · إجمالي النقدية المستحقة
               </p>
               <p className="tnum truncate text-sm font-extrabold">
                 <span className={totalGold >= 0 ? "text-owed" : "text-credit"}>
@@ -470,61 +617,337 @@ function NewTxnPage() {
   );
 }
 
-function LineCard({
+function StepHeading({
+  number,
+  title,
+  done = false,
+}: {
+  number: string;
+  title: string;
+  done?: boolean;
+}) {
+  return (
+    <div className="mb-4 flex items-center gap-3">
+      <span
+        className={cn(
+          "flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-extrabold",
+          done ? "bg-credit-soft text-credit" : "bg-primary text-primary-foreground",
+        )}
+      >
+        {done ? <Check className="size-4" /> : number}
+      </span>
+      <h2 className="text-base font-extrabold">{title}</h2>
+    </div>
+  );
+}
+
+function SelectedMerchant({
+  merchant,
+  onChange,
+  compact = false,
+}: {
+  merchant: MerchantDirectoryRow;
+  onChange: () => void;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 items-center justify-between gap-3 rounded-xl bg-card ring-1 ring-border",
+        compact ? "p-3" : "p-4",
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-primary">
+          <Store className="size-5" />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate font-extrabold">{merchant.name}</p>
+          <p className="truncate text-xs font-semibold text-muted-foreground">
+            {merchant.merchant_type === "raw" ? "تاجر خام" : "تاجر مشغولات"}
+            {merchant.phone ? ` · ${merchant.phone}` : ""}
+          </p>
+        </div>
+      </div>
+      <Button variant="ghost" size="sm" className="shrink-0 gap-1 font-bold" onClick={onChange}>
+        <Pencil className="size-3.5" />
+        تغيير
+      </Button>
+    </div>
+  );
+}
+
+function MerchantPicker({
+  selectedId,
+  excludeId,
+  onSelect,
+  compact = false,
+}: {
+  selectedId: string | null;
+  excludeId?: string | null;
+  onSelect: (merchant: MerchantDirectoryRow) => void;
+  compact?: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const [type, setType] = useState<"all" | MerchantType>("all");
+  const search = useDebouncedValue(query.trim());
+  const directory = useInfiniteQuery(
+    merchantDirectoryInfiniteQuery({
+      search,
+      type: type === "all" ? null : type,
+      sort: "name",
+    }),
+  );
+  const rows = (directory.data?.pages.flatMap((page) => page.rows) ?? []).filter(
+    (row) => row.merchant_id !== excludeId,
+  );
+
+  return (
+    <div className={cn("space-y-3", compact && "rounded-xl bg-muted/40 p-3")}>
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="relative min-w-0">
+          <Search className="pointer-events-none absolute inset-y-0 end-3 my-auto size-4 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="ابحث باسم التاجر"
+            className="h-12 bg-card pe-10 text-base"
+          />
+        </div>
+        <ChipGroup
+          value={type}
+          onChange={setType}
+          className="shrink-0"
+          options={[
+            { value: "all" as const, label: "الكل" },
+            { value: "jewelry" as const, label: "مشغولات" },
+            { value: "raw" as const, label: "خام" },
+          ]}
+        />
+      </div>
+      <div
+        className={cn(
+          "divide-y divide-border border-y border-border",
+          compact && "max-h-72 overflow-y-auto",
+        )}
+      >
+        {directory.isLoading ? (
+          <MerchantRowsSkeleton count={compact ? 3 : 5} />
+        ) : directory.isError ? (
+          <QueryError onRetry={() => directory.refetch()} />
+        ) : rows.length ? (
+          rows.map((row) => (
+            <button
+              key={row.merchant_id}
+              type="button"
+              onClick={() => onSelect(row)}
+              className={cn(
+                "grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2 py-3 text-start transition-colors hover:bg-accent/30 active:bg-accent/50",
+                selectedId === row.merchant_id && "bg-accent/40",
+              )}
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-extrabold">{row.name}</span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {row.merchant_type === "raw" ? "خام" : "مشغولات"}
+                  {row.phone ? ` · ${row.phone}` : ""}
+                </span>
+              </span>
+              <span className="rounded-lg bg-muted px-2 py-1 text-xs font-bold text-muted-foreground">
+                اختيار
+              </span>
+            </button>
+          ))
+        ) : (
+          <p className="px-3 py-8 text-center text-sm text-muted-foreground">مافيش تجار مطابقين.</p>
+        )}
+      </div>
+      <LoadMore
+        hasMore={Boolean(directory.hasNextPage)}
+        loading={directory.isFetchingNextPage}
+        onClick={() => directory.fetchNextPage()}
+      />
+    </div>
+  );
+}
+
+function LineSummary({
   index,
   line,
-  kind,
-  mType,
-  categories,
   result,
-  onChange,
+  categories,
+  onEdit,
   onRemove,
 }: {
   index: number;
   line: DraftLine;
-  kind: TxnKind;
+  result: ReturnType<typeof computeLine>;
+  categories: ItemCategory[];
+  onEdit: () => void;
+  onRemove?: (() => void) | undefined;
+}) {
+  const category = categories.find((candidate) => candidate.id === line.categoryId);
+  const summary = transactionLineSummary({
+    index,
+    kind: line.kind,
+    isReturn: line.isReturn,
+    method: line.method,
+    categoryName: category?.name_ar,
+    purity: line.purity,
+    weight: line.weight,
+    weight21: result.weight21,
+    cashAmount: result.cashAmount,
+  });
+
+  return (
+    <div className="page-enter flex items-center justify-between gap-3 rounded-xl bg-card p-3 shadow-sm ring-1 ring-border">
+      <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-start">
+        <p className="truncate font-extrabold">{summary.title}</p>
+        <p className="mt-0.5 truncate text-xs font-bold text-foreground/80">{summary.specific}</p>
+        <p className="tnum mt-1 truncate text-xs font-semibold text-muted-foreground">
+          {summary.meta}
+        </p>
+      </button>
+      <div className="flex shrink-0 items-center">
+        <Button variant="ghost" size="icon" onClick={onEdit} aria-label="فتح البند">
+          <ChevronDown className="size-4" />
+        </Button>
+        {onRemove ? (
+          <Button variant="ghost" size="icon" onClick={onRemove} aria-label="حذف البند">
+            <Trash2 className="size-4 text-destructive" />
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function LineCard({
+  index,
+  line,
+  lockedKind,
+  mType,
+  categories,
+  result,
+  onChange,
+  onCollapse,
+  onRemove,
+}: {
+  index: number;
+  line: DraftLine;
+  lockedKind?: "sale" | "transfer" | undefined;
   mType: MerchantType;
   categories: ItemCategory[];
   result: ReturnType<typeof computeLine>;
   onChange: (patch: Partial<DraftLine>) => void;
+  onCollapse: () => void;
   onRemove?: (() => void) | undefined;
 }) {
   const cat = categories.find((c) => c.id === line.categoryId) ?? null;
-  const isGoods = kind === "inbound" || kind === "purchase" || kind === "sale";
-  const shape = kind === "settlement" && line.method ? methodShape(line.method) : null;
+  const isGoods = line.kind === "inbound" || line.kind === "purchase" || line.kind === "sale";
+  const shape = line.kind === "settlement" && line.method ? methodShape(line.method) : null;
+  const choice: LineChoice = line.isReturn ? "return" : (line.kind as LineChoice);
+  const visibleCategories =
+    mType === "raw" ? categories.filter((c) => Number(c.fixed_purity) === line.purity) : categories;
+
+  function changeLineChoice(next: LineChoice) {
+    const isReturn = next === "return";
+    const kind: TxnKind = isReturn ? "inbound" : next;
+    onChange({
+      kind,
+      isReturn,
+      categoryId: null,
+      method: null,
+      purity: 875,
+      weight: 0,
+      pieces: 0,
+      rate: 0,
+      amount: 0,
+      goldPrice: 0,
+    });
+  }
 
   return (
     <Card className="space-y-4 p-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <span className="rounded-md bg-muted px-2 py-1 text-xs font-bold text-muted-foreground">
           بند {index + 1}
         </span>
-        {onRemove ? (
-          <Button variant="ghost" size="icon" onClick={onRemove} aria-label="حذف البند">
-            <Trash2 className="h-4 w-4 text-destructive" />
+        <div className="flex items-center">
+          <Button variant="ghost" size="icon" onClick={onCollapse} aria-label="طي البند">
+            <ChevronUp className="h-4 w-4" />
           </Button>
-        ) : null}
+          {onRemove ? (
+            <Button variant="ghost" size="icon" onClick={onRemove} aria-label="حذف البند">
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          ) : null}
+        </div>
       </div>
+
+      {!lockedKind ? (
+        <ChipGroup
+          label="نوع البند"
+          value={choice}
+          onChange={changeLineChoice}
+          options={[
+            { value: "inbound", label: "وارد" },
+            { value: "settlement", label: "تسديد" },
+            { value: "purchase", label: "شراء" },
+            { value: "return", label: "مرتجع" },
+          ]}
+        />
+      ) : null}
 
       {isGoods ? (
         <>
           <ChipGroup
-            label="الصنف"
-            value={line.categoryId}
-            onChange={(v) => {
-              const c = categories.find((x) => x.id === v);
+            label="العيار"
+            value={line.purity}
+            onChange={(purity) =>
               onChange({
-                categoryId: v,
-                weight: c?.fixed_weight ? Number(c.fixed_weight) : line.weight,
-                purity: c?.fixed_purity ? Number(c.fixed_purity) : line.purity,
-              });
-            }}
-            options={categories.map((c) => ({
-              value: c.id,
-              label: c.name_ar,
-              hint: c.fixed_weight ? `${Number(c.fixed_weight)} جم` : undefined,
-            }))}
+                purity,
+                categoryId: null,
+                weight: 0,
+                rate: mType === "raw" && purity === 991 ? 8 : 0,
+              })
+            }
+            options={
+              mType === "jewelry"
+                ? [
+                    { value: 875, label: "عيار 21" },
+                    { value: 750, label: "عيار 18" },
+                  ]
+                : [
+                    { value: 1000, label: "سبائك عيار 24" },
+                    { value: 875, label: "عملات عيار 21" },
+                    { value: 991, label: "بندقي 991" },
+                  ]
+            }
           />
+          {mType !== "raw" || line.purity !== 991 ? (
+            <ChipGroup
+              label="الصنف"
+              value={line.categoryId}
+              onChange={(v) => {
+                const c = categories.find((x) => x.id === v);
+                onChange({
+                  categoryId: v,
+                  weight: c?.fixed_weight ? Number(c.fixed_weight) : line.weight,
+                  purity: c?.fixed_purity ? Number(c.fixed_purity) : line.purity,
+                });
+              }}
+              options={visibleCategories.map((c) => ({
+                value: c.id,
+                label: c.name_ar,
+                hint: c.fixed_weight ? `${Number(c.fixed_weight)} جم` : undefined,
+              }))}
+            />
+          ) : (
+            <div className="rounded-xl bg-muted px-3 py-2 text-sm font-bold">
+              رسم البندقي ثابت: 8 جنيه للجرام
+            </div>
+          )}
           <div className="grid gap-3 sm:grid-cols-2">
             <NumField
               label="الوزن (جرام)"
@@ -533,15 +956,21 @@ function LineCard({
             />
             <NumField
               label={
-                mType === "raw" && kind !== "inbound"
-                  ? "مصنعية للجرام (جنيه)"
-                  : "المصنعية للجرام (جنيه)"
+                mType === "raw" && line.purity === 991 ? "الرسم للجرام" : "المصنعية للجرام (جنيه)"
               }
               value={line.rate}
-              onChange={(v) => onChange({ rate: v })}
+              onChange={(v) => onChange({ rate: mType === "raw" && line.purity === 991 ? 8 : v })}
               step="1"
             />
           </div>
+          {line.kind === "purchase" || line.kind === "sale" ? (
+            <NumField
+              label="سعر جرام نفس العيار (جنيه)"
+              value={line.goldPrice}
+              onChange={(goldPrice) => onChange({ goldPrice })}
+              step="1"
+            />
+          ) : null}
           {cat?.tracks_count ? (
             <NumField
               label="العدد"
@@ -551,7 +980,7 @@ function LineCard({
             />
           ) : null}
         </>
-      ) : kind === "transfer" ? (
+      ) : line.kind === "transfer" ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <NumField
             label="دهب محوَّل (جرام عيار 21)"
@@ -578,6 +1007,7 @@ function LineCard({
                 weight: 0,
                 amount: 0,
                 rate: 0,
+                goldPrice: 0,
               });
             }}
             options={METHODS_BY_TYPE[mType].map((m) => ({ value: m, label: METHOD_LABELS[m] }))}
@@ -613,7 +1043,15 @@ function LineCard({
                 ) : null}
                 {shape.amount ? (
                   <NumField
-                    label="المبلغ (جنيه)"
+                    label={
+                      line.method === "bar_cashback"
+                        ? "الكاشباك (إجمالي جنيه)"
+                        : line.method === "cash_received"
+                          ? "النقدية المحصلة (جنيه)"
+                          : line.method === "wage_to_gold"
+                            ? "الفلوس (جنيه)"
+                            : "المبلغ (جنيه)"
+                    }
                     value={line.amount}
                     onChange={(v) => onChange({ amount: v })}
                     step="1"
@@ -624,6 +1062,14 @@ function LineCard({
                     label={shape.rateLabel}
                     value={line.rate}
                     onChange={(v) => onChange({ rate: v })}
+                    step="1"
+                  />
+                ) : null}
+                {shape.needsPrice ? (
+                  <NumField
+                    label="سعر الجرام (جنيه)"
+                    value={line.goldPrice}
+                    onChange={(goldPrice) => onChange({ goldPrice })}
                     step="1"
                   />
                 ) : null}

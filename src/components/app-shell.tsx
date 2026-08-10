@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/brand-mark";
+import { PwaInstallButton } from "@/components/pwa-install";
 
 const NAV = [
   { to: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
@@ -28,13 +29,20 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20 md:pb-0">
+    <div className="min-h-screen overflow-x-clip bg-background pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">
       <header className="sticky top-0 z-30 border-b border-border/70 bg-card/95 backdrop-blur">
         <div className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <Link to="/dashboard" className="flex shrink-0 items-center gap-2">
+            <Link
+              to="/dashboard"
+              preload="intent"
+              viewTransition
+              className="flex shrink-0 items-center gap-2"
+            >
               <BrandMark className="h-9 w-9 rounded-xl" />
-              <span className="hidden text-base font-extrabold sm:block">المحبة للذهب</span>
+              <span dir="ltr" className="hidden text-base font-extrabold tracking-tight sm:block">
+                Mahaba Gold
+              </span>
             </Link>
             {title ? (
               <>
@@ -49,6 +57,7 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
                 <NavItem key={n.to} {...n} active={pathname.startsWith(n.to)} />
               ))}
             </nav>
+            <PwaInstallButton />
             <Button variant="ghost" size="icon" onClick={signOut} aria-label="خروج">
               <LogOut className="h-5 w-5" />
             </Button>
@@ -56,10 +65,15 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-5">{children}</main>
+      <main
+        key={pathname}
+        className="page-enter mx-auto min-w-0 max-w-6xl px-3 py-4 sm:px-4 sm:py-5"
+      >
+        {children}
+      </main>
 
       {/* شريط تنقل سفلي للموبايل */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/98 backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/98 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         <div className="mx-auto grid max-w-lg grid-cols-5">
           {NAV.map(({ to, label, icon: Icon }) => {
             const active = pathname.startsWith(to);
@@ -67,6 +81,8 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
               <Link
                 key={to}
                 to={to}
+                preload="intent"
+                viewTransition
                 className={cn(
                   "flex flex-col items-center gap-1 py-2.5 text-[11px] font-semibold transition-colors",
                   active ? "text-primary" : "text-muted-foreground",
@@ -97,6 +113,8 @@ function NavItem({
   return (
     <Link
       to={to}
+      preload="intent"
+      viewTransition
       className={cn(
         "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors",
         active
