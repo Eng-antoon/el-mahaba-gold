@@ -348,11 +348,11 @@ export function auditInfiniteQuery({
       const rows = unwrap(
         await supabase
           .rpc("visible_audit_activity", {
-            _actor_id: actorId || null,
-            _table_name: table || null,
-            _operation: operation || null,
-            _from: from || null,
-            _to: to || null,
+            ...(actorId ? { _actor_id: actorId } : {}),
+            ...(table ? { _table_name: table } : {}),
+            ...(operation ? { _operation: operation } : {}),
+            ...(from ? { _from: from } : {}),
+            ...(to ? { _to: to } : {}),
           })
           .range(pageParam, pageParam + PAGE_SIZE),
       );
