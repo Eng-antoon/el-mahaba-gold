@@ -10,6 +10,7 @@ describe("Mahaba Gold PWA assets", () => {
     lang: string;
     dir: string;
     icons: Array<{ src: string; sizes: string; purpose: string }>;
+    shortcuts: Array<{ name: string; url: string }>;
   };
 
   test("defines the install identity and standalone launch", () => {
@@ -25,6 +26,15 @@ describe("Mahaba Gold PWA assets", () => {
     expect(manifest.icons.some((icon) => icon.sizes === "512x512")).toBe(true);
     expect(manifest.icons.some((icon) => icon.purpose === "maskable")).toBe(true);
     for (const icon of manifest.icons) expect(existsSync(`public${icon.src}`)).toBe(true);
+    expect(existsSync("public/favicon.png")).toBe(true);
+    expect(existsSync("public/icons/apple-touch-icon.png")).toBe(true);
+  });
+
+  test("exposes quick shortcuts to the busiest screens", () => {
+    const urls = manifest.shortcuts.map((shortcut) => shortcut.url);
+    expect(urls).toContain("/new");
+    expect(urls).toContain("/merchants");
+    expect(urls).toContain("/statements");
   });
 
   test("keeps financial requests out of the service worker cache", () => {
@@ -32,5 +42,12 @@ describe("Mahaba Gold PWA assets", () => {
     expect(worker).toContain("url.origin !== self.location.origin");
     expect(worker).not.toContain("supabase.co");
     expect(worker).not.toContain("/rest/v1");
+  });
+
+  test("guards service worker registration against preview contexts", () => {
+    const register = readFileSync("src/lib/register-sw.ts", "utf8");
+    expect(register).toContain("window.self !== window.top");
+    expect(register).toContain("id-preview--");
+    expect(register).toContain('get("sw") === "off"');
   });
 });
