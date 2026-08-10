@@ -78,8 +78,8 @@ export function merchantDirectoryInfiniteQuery({
       const rows = unwrap(
         await supabase
           .rpc("merchant_directory", {
-            _search: search.trim() || null,
-            _type: type,
+            _search: search.trim() || undefined,
+            _type: type ?? undefined,
             _sort: sort,
           })
           .range(pageParam, pageParam + PAGE_SIZE),
