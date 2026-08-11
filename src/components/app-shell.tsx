@@ -6,7 +6,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/brand-mark";
-import { PwaInstallButton, PwaInstallPrompt } from "@/components/pwa-install";
 
 const NAV = [
   { to: "/dashboard", label: "الرئيسية", icon: LayoutDashboard },
@@ -57,7 +56,6 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
                 <NavItem key={n.to} {...n} active={pathname.startsWith(n.to)} />
               ))}
             </nav>
-            <PwaInstallButton />
             <Button variant="ghost" size="icon" onClick={signOut} aria-label="خروج">
               <LogOut className="h-5 w-5" />
             </Button>
@@ -66,9 +64,6 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
       </header>
 
       <main className="mx-auto min-w-0 max-w-6xl px-3 py-4 sm:px-4 sm:py-5">{children}</main>
-
-      <PwaInstallPrompt />
-
       {/* شريط تنقل سفلي للموبايل */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/98 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         <div className="mx-auto grid max-w-lg grid-cols-5">

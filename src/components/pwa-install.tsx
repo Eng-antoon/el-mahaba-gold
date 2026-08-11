@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { Download, Share, X } from "lucide-react";
+import { Share, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BrandMark } from "@/components/brand-mark";
+import { cn } from "@/lib/utils";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 }
 
-const DISMISS_KEY = "mahaba-install-dismissed-at";
-const DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
+const DISMISS_KEY = "mahaba-install-dismissed";
 
 function isStandalone() {
   if (typeof window === "undefined") return false;
@@ -65,14 +64,14 @@ function usePwaInstall() {
 
   const install = useCallback(async () => {
     if (!promptEvent) {
-      setShowIosHelp(true);
+      if (ios) setShowIosHelp(true);
       return;
     }
     await promptEvent.prompt();
     const choice = await promptEvent.userChoice;
     setPromptEvent(null);
     if (choice.outcome === "accepted") setInstalled(true);
-  }, [promptEvent]);
+  }, [ios, promptEvent]);
 
   const canInstall = ready && !installed && (Boolean(promptEvent) || ios);
 
@@ -104,33 +103,17 @@ function IosHelpDialog({
   );
 }
 
-export function PwaInstallButton() {
-  const { canInstall, install, showIosHelp, setShowIosHelp } = usePwaInstall();
-  if (!canInstall) return null;
-
-  return (
-    <>
-      <Button variant="ghost" size="icon" onClick={install} aria-label="تثبيت التطبيق">
-        <Download className="size-5" />
-      </Button>
-      <IosHelpDialog open={showIosHelp} onOpenChange={setShowIosHelp} />
-    </>
-  );
-}
-
 /** شريط تنبيه بالتثبيت، يظهر لو التطبيق مش مثبت على الجهاز. */
-export function PwaInstallPrompt() {
+export function PwaInstallPrompt({ hasMobileNav }: { hasMobileNav: boolean }) {
   const { canInstall, install, showIosHelp, setShowIosHelp } = usePwaInstall();
   const [snoozed, setSnoozed] = useState(true);
 
   useEffect(() => {
-    const raw = window.localStorage.getItem(DISMISS_KEY);
-    const at = raw ? Number(raw) : 0;
-    setSnoozed(Boolean(at) && Date.now() - at < DISMISS_MS);
+    setSnoozed(window.sessionStorage.getItem(DISMISS_KEY) === "1");
   }, []);
 
   function dismiss() {
-    window.localStorage.setItem(DISMISS_KEY, String(Date.now()));
+    window.sessionStorage.setItem(DISMISS_KEY, "1");
     setSnoozed(true);
   }
 
@@ -138,17 +121,31 @@ export function PwaInstallPrompt() {
 
   return (
     <>
-      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 px-3 md:bottom-[calc(1rem+env(safe-area-inset-bottom))]">
-        <div className="mx-auto flex max-w-lg items-center gap-3 rounded-2xl border border-border bg-card p-3 shadow-lg md:max-w-md">
-          <BrandMark className="h-10 w-10 rounded-xl" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold leading-6">ثبّت Mahaba Gold على جهازك</p>
-            <p className="truncate text-xs text-muted-foreground">دخول أسرع من الشاشة الرئيسية.</p>
-          </div>
-          <Button size="sm" className="font-bold" onClick={install}>
+      <div
+        className={cn(
+          "fixed inset-x-0 z-40 px-3 md:bottom-[calc(1rem+env(safe-area-inset-bottom))]",
+          hasMobileNav
+            ? "bottom-[calc(4.75rem+env(safe-area-inset-bottom))]"
+            : "bottom-[calc(1rem+env(safe-area-inset-bottom))]",
+        )}
+      >
+        <div className="mx-auto flex max-w-sm items-center gap-1 rounded-xl border border-border/80 bg-card/95 p-1.5 shadow-sm backdrop-blur">
+          <p className="min-w-0 flex-1 truncate px-2 text-xs font-semibold">ثبّت Mahaba Gold</p>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-8 px-3 text-xs font-bold"
+            onClick={install}
+          >
             تثبيت
           </Button>
-          <Button variant="ghost" size="icon" onClick={dismiss} aria-label="مش دلوقتي">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={dismiss}
+            aria-label="مش دلوقتي"
+          >
             <X className="size-4" />
           </Button>
         </div>

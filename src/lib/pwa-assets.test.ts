@@ -50,4 +50,17 @@ describe("Mahaba Gold PWA assets", () => {
     expect(register).toContain("id-preview--");
     expect(register).toContain('get("sw") === "off"');
   });
+
+  test("uses one global, session-dismissable install prompt without a navbar action", () => {
+    const appShell = readFileSync("src/components/app-shell.tsx", "utf8");
+    const rootRoute = readFileSync("src/routes/__root.tsx", "utf8");
+    const installPrompt = readFileSync("src/components/pwa-install.tsx", "utf8");
+
+    expect(appShell).not.toContain("PwaInstallButton");
+    expect(appShell).not.toContain("PwaInstallPrompt");
+    expect(rootRoute).toContain("<PwaInstallPrompt hasMobileNav={hasMobileNav} />");
+    expect(installPrompt).toContain("window.sessionStorage");
+    expect(installPrompt).not.toContain("window.localStorage");
+    expect(installPrompt).toContain("if (ios) setShowIosHelp(true)");
+  });
 });

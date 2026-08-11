@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -15,6 +16,16 @@ import { registerServiceWorker } from "../lib/register-sw";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { invalidateIdentityData } from "@/lib/query-cache";
+import { PwaInstallPrompt } from "@/components/pwa-install";
+
+const MOBILE_NAV_ROUTES = [
+  "/dashboard",
+  "/merchants",
+  "/new",
+  "/statements",
+  "/audit",
+  "/transactions",
+] as const;
 
 function NotFoundComponent() {
   return (
@@ -151,6 +162,10 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const hasMobileNav = MOBILE_NAV_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
 
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((event) => {
@@ -169,6 +184,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
+      <PwaInstallPrompt hasMobileNav={hasMobileNav} />
       <Toaster position="top-center" />
     </QueryClientProvider>
   );
