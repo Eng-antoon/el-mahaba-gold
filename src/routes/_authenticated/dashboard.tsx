@@ -115,7 +115,7 @@ function Dashboard() {
                     {b.last_txn_date ? (
                       <>
                         {" · آخر حركة "}
-                        <bdi dir="ltr">{fmtDate(b.last_txn_date)}</bdi>
+                        <time dateTime={b.last_txn_date}>{fmtDate(b.last_txn_date)}</time>
                       </>
                     ) : null}
                   </p>

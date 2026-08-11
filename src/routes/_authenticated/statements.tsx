@@ -179,7 +179,7 @@ function StatementsPage() {
                         {statementKindLabel(r)}
                       </Link>
                       <div className="text-xs text-muted-foreground">
-                        <bdi dir="ltr">{fmtDate(r.txn_date)}</bdi>
+                        <time dateTime={r.txn_date}>{fmtDate(r.txn_date)}</time>
                         {r.counterparty_name ? ` · ${r.counterparty_name}` : ""}
                       </div>
                     </td>
@@ -211,7 +211,7 @@ function StatementsPage() {
                   <div>
                     <p className="font-extrabold">{statementKindLabel(r)}</p>
                     <p className="text-xs text-muted-foreground">
-                      <bdi dir="ltr">{fmtDate(r.txn_date)}</bdi>
+                      <time dateTime={r.txn_date}>{fmtDate(r.txn_date)}</time>
                       {r.counterparty_name ? ` · ${r.counterparty_name}` : ""}
                     </p>
                   </div>

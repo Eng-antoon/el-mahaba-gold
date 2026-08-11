@@ -47,6 +47,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { invalidateLedgerData } from "@/lib/query-cache";
 import { MerchantRowsSkeleton, QueryError } from "@/components/loading-states";
 import { LoadMore } from "@/components/load-more";
 import { cn } from "@/lib/utils";
@@ -310,7 +311,7 @@ function NewTxnPage() {
         ];
       });
       const { data, error } = await supabase.rpc("save_transaction", {
-        _transaction_id: search.transaction ?? null,
+        _transaction_id: search.transaction ?? (null as unknown as string),
         _payload: {
           merchant_id: merchantId,
           counterparty_merchant_id: mode === "transfer" ? counterparty : null,
@@ -326,7 +327,7 @@ function NewTxnPage() {
     },
     onSuccess: ({ merchantId: id }) => {
       toast.success(search.transaction ? "تم تعديل الحركة" : "تم حفظ الحركة");
-      qc.invalidateQueries();
+      void invalidateLedgerData(qc);
       navigate({ to: "/merchants/$id", params: { id: id! } });
     },
     onError: (e: Error) => toast.error(e.message),

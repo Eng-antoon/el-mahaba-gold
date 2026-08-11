@@ -33,6 +33,7 @@ import {
   QueryError,
   TransactionRowsSkeleton,
 } from "@/components/loading-states";
+import { invalidateLedgerData } from "@/lib/query-cache";
 
 const searchSchema = z.object({
   from: z.string().optional(),
@@ -74,7 +75,7 @@ function MerchantPage() {
       toast.success("تم إلغاء الحركة وإخفاؤها من الحساب");
       setVoidId(null);
       setReason("");
-      qc.invalidateQueries();
+      void invalidateLedgerData(qc);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -91,7 +92,7 @@ function MerchantPage() {
       toast.success("تمت تصفية الحساب وأصبح الرصيد صفرًا");
       setSettleOpen(false);
       setSettleReason("");
-      qc.invalidateQueries();
+      void invalidateLedgerData(qc);
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -186,7 +187,7 @@ function MerchantPage() {
                       {t.is_account_settlement ? "تصفية الحساب" : KIND_SHORT[t.kind]}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
-                      <bdi dir="ltr">{fmtDate(t.txn_date)}</bdi>
+                      <time dateTime={t.txn_date}>{fmtDate(t.txn_date)}</time>
                       {other ? ` · ${other}` : ""}
                       {t.notes ? ` · ${t.notes}` : ""}
                     </p>

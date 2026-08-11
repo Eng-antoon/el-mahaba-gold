@@ -65,12 +65,7 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
         </div>
       </header>
 
-      <main
-        key={pathname}
-        className="page-enter mx-auto min-w-0 max-w-6xl px-3 py-4 sm:px-4 sm:py-5"
-      >
-        {children}
-      </main>
+      <main className="mx-auto min-w-0 max-w-6xl px-3 py-4 sm:px-4 sm:py-5">{children}</main>
 
       <PwaInstallPrompt />
 

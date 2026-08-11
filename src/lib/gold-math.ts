@@ -1,3 +1,5 @@
+import { formatArabicDate, formatArabicDateTime } from "@/lib/date-format";
+
 // منطق حسابات الذهب — نقاء العيارات والتحويل لعيار 21
 // كل الأرصدة بالإشارة: موجب = عليّ (أنا مدين للتاجر) ، سالب = ليّ (التاجر مدين لي)
 
@@ -259,25 +261,11 @@ export function directionLabel(n: number): "عليّ" | "ليّ" | "متساوي
 }
 
 export function fmtDate(d: string | Date): string {
-  const date = typeof d === "string" ? new Date(d) : d;
-  return new Intl.DateTimeFormat("ar-EG", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    numberingSystem: "latn",
-  }).format(date);
+  return formatArabicDate(d);
 }
 
 export function fmtDateTime(d: string | Date): string {
-  const date = typeof d === "string" ? new Date(d) : d;
-  return new Intl.DateTimeFormat("ar-EG", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    numberingSystem: "latn",
-  }).format(date);
+  return formatArabicDateTime(d);
 }
 
 export function todayISO(): string {

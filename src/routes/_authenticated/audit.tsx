@@ -3,7 +3,13 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { History, UserRound } from "lucide-react";
 import { z } from "zod";
 import { AppShell } from "@/components/app-shell";
-import { auditInfiniteQuery, categoriesQuery, merchantsQuery, profilesQuery } from "@/lib/db";
+import {
+  auditInfiniteQuery,
+  categoriesQuery,
+  merchantsQuery,
+  myRoleQuery,
+  profilesQuery,
+} from "@/lib/db";
 import { fmtDateTime } from "@/lib/gold-math";
 import { buildHumanAuditActivity } from "@/lib/audit-activity";
 import {
@@ -22,6 +28,7 @@ import {
 import { DateRangePicker } from "@/components/date-range-picker";
 import { LoadMore } from "@/components/load-more";
 import { QueryError, TransactionRowsSkeleton } from "@/components/loading-states";
+import { UserManagement } from "@/components/user-management";
 
 const searchSchema = z.object({
   table: z.string().optional(),
@@ -53,6 +60,7 @@ function AuditPage() {
   const { data: profiles = [] } = useQuery(profilesQuery);
   const { data: merchants = [] } = useQuery(merchantsQuery);
   const { data: categories = [] } = useQuery(categoriesQuery);
+  const { data: me } = useQuery(myRoleQuery);
   const table = search.table ?? "all";
   const operation = search.operation ?? "all";
   const actor = search.actor ?? "all";
@@ -69,6 +77,11 @@ function AuditPage() {
 
   return (
     <AppShell title="سجل النشاط">
+      {me?.isAdmin ? (
+        <div className="mb-3 flex justify-end">
+          <UserManagement />
+        </div>
+      ) : null}
       <div className="grid gap-3 border-b border-border pb-5 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.4fr]">
         <Select
           value={actor}
@@ -148,7 +161,7 @@ function AuditPage() {
                         </p>
                       ) : null}
                       <p className="mt-1 text-xs font-normal text-muted-foreground">
-                        <bdi dir="ltr">{fmtDateTime(row.created_at)}</bdi>
+                        <time dateTime={row.created_at}>{fmtDateTime(row.created_at)}</time>
                         <span> · </span>
                         {row.actor_id ? (names.get(row.actor_id) ?? "مستخدم") : "النظام"}
                       </p>

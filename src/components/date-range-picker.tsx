@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/
 import { cn } from "@/lib/utils";
 import { nextRangeSelection } from "@/lib/date-range";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { formatArabicDateRange } from "@/lib/date-format";
 
 export interface CommittedDateRange {
   from?: string | undefined;
@@ -24,12 +25,6 @@ function fromISO(value?: string) {
 
 function toISO(value: Date) {
   return format(value, "yyyy-MM-dd");
-}
-
-function formatRange(range: DateRange | undefined) {
-  if (!range?.from) return "اختار الفترة";
-  if (!range.to) return `${format(range.from, "d MMM yyyy", { locale: ar })} — اختار النهاية`;
-  return `${format(range.from, "d MMM yyyy", { locale: ar })} — ${format(range.to, "d MMM yyyy", { locale: ar })}`;
 }
 
 export function DateRangePicker({
@@ -72,9 +67,9 @@ export function DateRangePicker({
       className="h-10 min-w-0 flex-1 justify-start gap-2 bg-card px-3 text-start font-bold"
     >
       <CalendarDays className="size-4 shrink-0 text-primary" />
-      <bdi dir="ltr" className="truncate">
-        {formatRange(draft)}
-      </bdi>
+      <span className="truncate" dir="rtl">
+        {formatArabicDateRange(draft?.from, draft?.to)}
+      </span>
     </Button>
   );
 
@@ -91,6 +86,8 @@ export function DateRangePicker({
         selected={draft}
         onDayClick={choose}
         numberOfMonths={1}
+        locale={ar}
+        dir="rtl"
         className="mx-auto w-full max-w-[19rem] p-2 [--cell-size:2rem]"
       />
       <div className="grid grid-cols-2 gap-2 border-t border-border p-3">

@@ -174,19 +174,50 @@
   }
 }
 
+/* Range bands use logical RTL joins: later dates continue toward the left. */
+.date-range-middle {
+  background: var(--color-accent);
+}
+
+.date-range-start {
+  background: linear-gradient(to left, transparent 0 50%, var(--color-accent) 50% 100%);
+}
+
+.date-range-end {
+  background: linear-gradient(to right, transparent 0 50%, var(--color-accent) 50% 100%);
+}
+
+.rdp-week > .date-range-start:last-child,
+.rdp-week > .date-range-end:first-child,
+.date-range-start.date-range-end {
+  background: transparent;
+}
+
 @keyframes page-enter {
   from {
     opacity: 0;
-    transform: translateY(5px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
 .page-enter {
-  animation: page-enter 180ms ease-out both;
+  animation: page-enter 110ms ease-out both;
+}
+
+::view-transition-old(root) {
+  animation: 80ms ease-out both fade-out;
+}
+
+::view-transition-new(root) {
+  animation: 110ms ease-out both page-enter;
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -201,10 +232,5 @@
 }
 
 @utility gold-line {
-  background-image: linear-gradient(
-    90deg,
-    transparent,
-    var(--color-gold),
-    transparent
-  );
+  background-image: linear-gradient(90deg, transparent, var(--color-gold), transparent);
 }

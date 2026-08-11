@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
-import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, keepPreviousData, queryOptions } from "@tanstack/react-query";
 
 export type Merchant = Database["public"]["Tables"]["merchants"]["Row"];
 export type ItemCategory = Database["public"]["Tables"]["item_categories"]["Row"];
@@ -86,6 +86,7 @@ export function merchantDirectoryInfiniteQuery({
       );
       return paged(rows, pageParam);
     },
+    placeholderData: keepPreviousData,
     getNextPageParam: (lastPage) => lastPage.nextOffset,
   });
 }
@@ -162,6 +163,7 @@ export function merchantTxnsInfiniteQuery(id: string, from?: string, to?: string
       ) as unknown as MerchantTransaction[];
       return paged(rows, pageParam);
     },
+    placeholderData: keepPreviousData,
     getNextPageParam: (lastPage) => lastPage.nextOffset,
   });
 }
@@ -179,6 +181,7 @@ export function merchantActivityTotalsQuery(id: string, from?: string, to?: stri
       );
       return rows[0] ?? { gold: 0, cash: 0 };
     },
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -232,6 +235,7 @@ export function statementInfiniteQuery(merchantId: string | null, from?: string,
       );
       return paged(rows, pageParam);
     },
+    placeholderData: keepPreviousData,
     getNextPageParam: (lastPage) => lastPage.nextOffset,
   });
 }
@@ -259,6 +263,7 @@ export function statementBalancesQuery(merchantId: string | null, from?: string,
         }
       );
     },
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -284,6 +289,7 @@ export function statementSummaryQuery(merchantId: string | null, from?: string, 
         }
       );
     },
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -358,6 +364,7 @@ export function auditInfiniteQuery({
       );
       return paged(rows, pageParam);
     },
+    placeholderData: keepPreviousData,
     getNextPageParam: (lastPage) => lastPage.nextOffset,
   });
 }
@@ -385,12 +392,17 @@ export const myRoleQuery = queryOptions({
   queryFn: async () => {
     const { data: userData } = await supabase.auth.getUser();
     const uid = userData.user?.id;
-    if (!uid) return { userId: null, isAdmin: false, name: "" };
+    if (!uid) return { userId: null, isAdmin: false, isActive: false, name: "" };
     const roles = unwrap(await supabase.from("user_roles").select("role").eq("user_id", uid));
-    const profile = await supabase.from("profiles").select("full_name").eq("id", uid).maybeSingle();
+    const profile = await supabase
+      .from("profiles")
+      .select("full_name, is_active")
+      .eq("id", uid)
+      .maybeSingle();
     return {
       userId: uid,
       isAdmin: roles.some((r) => r.role === "admin"),
+      isActive: profile.data?.is_active === true,
       name: profile.data?.full_name || userData.user?.email || "",
     };
   },

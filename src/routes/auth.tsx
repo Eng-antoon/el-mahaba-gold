@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -22,17 +23,20 @@ export const Route = createFileRoute("/auth")({
 });
 
 const schema = z.object({
-  email: z.string().trim().email({ message: "البريد الإلكتروني غير صحيح" }).max(255),
+  email: z
+    .string()
+    .trim()
+    .email({ message: "البريد الإلكتروني غير صحيح" })
+    .max(255)
+    .transform((value) => value.toLowerCase()),
   password: z.string().min(6, { message: "كلمة السر لازم 6 حروف على الأقل" }).max(72),
-  fullName: z.string().trim().max(100).optional(),
 });
 
 export function AuthPage() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -43,44 +47,37 @@ export function AuthPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const parsed = schema.safeParse({ email, password, fullName });
+    const parsed = schema.safeParse({ email, password });
     if (!parsed.success) {
       toast.error(parsed.error.errors[0]?.message ?? "بيانات غير صحيحة");
       return;
     }
     setBusy(true);
     try {
-      if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: parsed.data.email,
-          password: parsed.data.password,
-        });
-        if (error) throw error;
-        navigate({ to: "/dashboard", replace: true });
-      } else {
-        const { data, error } = await supabase.auth.signUp({
-          email: parsed.data.email,
-          password: parsed.data.password,
-          options: {
-            emailRedirectTo: window.location.origin,
-            data: { full_name: parsed.data.fullName || "" },
-          },
-        });
-        if (error) throw error;
-        if (data.session) {
-          navigate({ to: "/dashboard", replace: true });
-        } else {
-          toast.success("تم إنشاء الحساب — افتح بريدك وأكّد التسجيل");
-          setMode("login");
-        }
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: parsed.data.email,
+        password: parsed.data.password,
+      });
+      if (error) throw error;
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("is_active")
+        .eq("id", data.user.id)
+        .maybeSingle();
+      if (profileError) throw profileError;
+      if (profile?.is_active !== true) {
+        await supabase.auth.signOut({ scope: "local" });
+        throw new Error("الحساب متوقف. تواصل مع المدير.");
       }
+      navigate({ to: "/dashboard", replace: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "حصلت مشكلة";
       toast.error(
         msg.includes("Invalid login credentials")
           ? "البريد أو كلمة السر غلط"
-          : msg.includes("already registered")
-            ? "البريد ده مسجّل بالفعل"
+          : /banned/i.test(msg)
+            ? "الحساب متوقف. تواصل مع المدير."
             : msg,
       );
     } finally {
@@ -102,37 +99,14 @@ export function AuthPage() {
         </div>
 
         <Card className="p-5">
-          <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
-            {(["login", "signup"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMode(m)}
-                className={`rounded-lg py-2 text-sm font-bold transition-colors ${
-                  mode === m ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
-                }`}
-              >
-                {m === "login" ? "دخول" : "حساب جديد"}
-              </button>
-            ))}
+          <div className="mb-5">
+            <h2 className="font-extrabold">تسجيل الدخول</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              استخدم البريد وكلمة السر اللي استلمتهم من المدير.
+            </p>
           </div>
 
           <form onSubmit={submit} className="space-y-4">
-            {mode === "signup" ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="name" className="font-bold">
-                  الاسم
-                </Label>
-                <Input
-                  id="name"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="اسمك"
-                  className="h-12"
-                  maxLength={100}
-                />
-              </div>
-            ) : null}
             <div className="space-y-1.5">
               <Label htmlFor="email" className="font-bold">
                 البريد الإلكتروني
@@ -153,19 +127,29 @@ export function AuthPage() {
               <Label htmlFor="password" className="font-bold">
                 كلمة السر
               </Label>
-              <Input
-                id="password"
-                type="password"
-                dir="ltr"
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="h-12"
-                required
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  dir="ltr"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="h-12 pe-11"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((value) => !value)}
+                  className="absolute inset-y-0 end-0 grid w-11 place-items-center text-muted-foreground"
+                  aria-label={showPassword ? "إخفاء كلمة السر" : "إظهار كلمة السر"}
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
             </div>
             <Button type="submit" className="h-12 w-full text-base font-bold" disabled={busy}>
-              {busy ? "لحظة..." : mode === "login" ? "دخول" : "إنشاء الحساب"}
+              {busy ? "لحظة..." : "دخول"}
             </Button>
           </form>
         </Card>

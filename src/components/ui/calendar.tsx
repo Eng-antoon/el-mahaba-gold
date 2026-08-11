@@ -31,10 +31,7 @@ function Calendar({
         className,
       )}
       captionLayout={captionLayout}
-      formatters={{
-        formatMonthDropdown: (date) => date.toLocaleString("default", { month: "short" }),
-        ...formatters,
-      }}
+      {...(formatters ? { formatters } : {})}
       classNames={{
         root: cn("w-fit", defaultClassNames.root),
         months: cn("relative flex flex-col gap-4 md:flex-row", defaultClassNames.months),
@@ -86,12 +83,12 @@ function Calendar({
           defaultClassNames.week_number,
         ),
         day: cn(
-          "group/day relative aspect-square h-full w-full select-none p-0 text-center [&:first-child[data-selected=true]_button]:rounded-l-md [&:last-child[data-selected=true]_button]:rounded-r-md",
+          "date-range-day group/day relative aspect-square h-full w-full select-none p-0 text-center",
           defaultClassNames.day,
         ),
-        range_start: cn("bg-accent rounded-l-md", defaultClassNames.range_start),
-        range_middle: cn("rounded-none", defaultClassNames.range_middle),
-        range_end: cn("bg-accent rounded-r-md", defaultClassNames.range_end),
+        range_start: cn("date-range-start", defaultClassNames.range_start),
+        range_middle: cn("date-range-middle", defaultClassNames.range_middle),
+        range_end: cn("date-range-end", defaultClassNames.range_end),
         today: cn(
           "bg-accent text-accent-foreground rounded-md data-[selected=true]:rounded-none",
           defaultClassNames.today,
