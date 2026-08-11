@@ -313,7 +313,7 @@ export function UserManagement() {
                   <Input
                     id="managed-user-password"
                     type={showPassword ? "text" : "password"}
-                    dir="ltr"
+                    dir="rtl"
                     autoComplete="new-password"
                     value={draft.password}
                     onChange={(event) =>
