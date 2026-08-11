@@ -7,6 +7,9 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
+  // Keep Lovable's managed Cloudflare output inside Lovable, while producing
+  // Netlify Functions and static assets for self-hosted production builds.
+  nitro: { preset: "netlify" },
   vite: {
     server: {
       allowedHosts: ["kissable-frayed-bunny.ngrok-free.dev"],
